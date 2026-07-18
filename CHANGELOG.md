@@ -15,7 +15,20 @@
 - 写 LLM Wiki 维护层：`CLAUDE.md` / `INDEX.md` / `CHANGELOG.md` / `README.md` / 6×`_index.md`
 - frontmatter 标准化：核心文档全量 + 其余脚本批量打底
 
-**待办**：
-- [ ] 装 Obsidian（`brew install --cask obsidian`）并打开本目录为 vault
-- [ ] 配 filesystem MCP server + obsidian-skills 打通 Claude Code
-- [ ] 首次 lint：通读全库完善 `INDEX.md` 概念地图与人物关系网络
+**已完成**：
+- ✅ 装 Obsidian 1.12.7（brew --cask）并指向 document vault
+- ✅ 配 filesystem MCP server（`obsidian-vault`，写入 `~/.claude.json`，重启 CC 生效）
+- ✅ 装 obsidian-skills（kepano 官方 5 skills：defuddle / json-canvas / obsidian-bases / obsidian-cli / obsidian-markdown）
+
+## 2026-07-18 · 首次 lint
+
+**检查结果**：
+- frontmatter 覆盖率：54/54 内容文档 = 100%
+- 坏链：无（`../` 与 `[[文件名]]` 仅为规则文本，非实际链接）
+- 分类：6 类 57 内容文件归位
+- git 提交：6 次
+
+**待办（用户侧）**：
+- [ ] 在 Obsidian GUI 点 "Trust author and enable plugins" 信任 document vault（生成 `.obsidian`）
+- [ ] 重启 Claude Code 使 filesystem MCP（`obsidian-vault`）生效
+- [ ] 后续说「复盘 vault」触发深度 lint（通读全库完善 INDEX 人物关系网）
