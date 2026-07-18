@@ -13,10 +13,10 @@
 
 | 文件 | 内容 |
 |------|------|
-| `../ai_token_industry_deep_research.md` | 主报告（574行，12章全维度覆盖） |
-| `../ai_token_critical_discussion.md` | 补充讨论（后Token时代/金融化/负外部性/NVIDIA垄断） |
-| `../ai_token_data_verification.md` | 数据清单（100+数据点 × 置信度评级） |
-| `../ai_token_research_execution_log.md` | 执行日志（4 Agent统计） |
+| `ai_token_industry_deep_research.md` | 主报告（574行，12章全维度覆盖） |
+| `ai_token_critical_discussion.md` | 补充讨论（后Token时代/金融化/负外部性/NVIDIA垄断） |
+| `ai_token_data_verification.md` | 数据清单（100+数据点 × 置信度评级） |
+| `ai_token_research_execution_log.md` | 执行日志（4 Agent统计） |
 
 ## 🎯 Agent 3 关键数据发现速查
 
