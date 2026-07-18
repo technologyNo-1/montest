@@ -1,3 +1,12 @@
+---
+title: "AI DataWorks — 测试方案与用例"
+type: tech-practice
+date: 2026-07-02
+tags: []
+status: active
+source: ""
+---
+
 # AI DataWorks — 测试方案与用例
 
 ## 一、测试策略总览

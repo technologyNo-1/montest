@@ -1,3 +1,12 @@
+---
+title: "AI DataWorks — 技术架构设计文档"
+type: tech-practice
+date: 2026-07-02
+tags: []
+status: active
+source: ""
+---
+
 # AI DataWorks — 技术架构设计文档
 
 ## 一、整体架构

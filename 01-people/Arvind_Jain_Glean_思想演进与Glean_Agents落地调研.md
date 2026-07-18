@@ -1,3 +1,12 @@
+---
+title: "Arvind Jain 与 Glean：思想演进、近期访谈、事件时间轴与 Glean Agents 落地调研"
+type: people-analysis
+date: 2026-07-18
+tags: []
+status: active
+source: ""
+---
+
 # Arvind Jain 与 Glean：思想演进、近期访谈、事件时间轴与 Glean Agents 落地调研
 
 > 调研日期：2026-07-18 ｜ 覆盖窗口：近 360 天（2025-07 至 2026-07，背景部分适当前溯）

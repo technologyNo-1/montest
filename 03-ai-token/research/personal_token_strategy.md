@@ -1,3 +1,12 @@
+---
+title: "基于 Token 产业调研的个人切入规划"
+type: ai-token
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # 基于 Token 产业调研的个人切入规划
 
 > 前提假设：我是一个现实存在的个体，拥有技术背景（懂代码/懂 LLM/能撸产品），

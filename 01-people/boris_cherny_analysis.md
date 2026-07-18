@@ -1,3 +1,12 @@
+---
+title: "Boris Cherny（Claude Code 之父）个人背景与近 360 天思想体系系统化梳理总结"
+type: people-analysis
+date: 2026-07-04
+tags: []
+status: active
+source: ""
+---
+
 # Boris Cherny（Claude Code 之父）个人背景与近 360 天思想体系系统化梳理总结
 
 > 数据来源：公开播客、访谈、演讲、媒体报道

@@ -1,3 +1,12 @@
+---
+title: "安杰尼·米达（Anjney Midha）— 背景、思想体系与近360天访谈系统化梳理"
+type: people-analysis
+date: 2026-07-15
+tags: []
+status: active
+source: ""
+---
+
 # 安杰尼·米达（Anjney Midha）— 背景、思想体系与近360天访谈系统化梳理
 
 > 数据来源：公开博客、播客访谈、媒体专访、a16z 官方文章/推文

@@ -1,3 +1,12 @@
+---
+title: "AI Token 产业深度调研报告"
+type: ai-token
+date: 2026-07-07
+tags: []
+status: active
+source: ""
+---
+
 # AI Token 产业深度调研报告
 
 ## Token 作为经济单位的全方位多维分析

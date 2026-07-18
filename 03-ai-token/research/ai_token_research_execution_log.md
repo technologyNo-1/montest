@@ -1,3 +1,12 @@
+---
+title: "AI Token 产业调研 —— 执行日志"
+type: ai-token
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # AI Token 产业调研 —— 执行日志
 
 ## 执行概要

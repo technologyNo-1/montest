@@ -1,3 +1,12 @@
+---
+title: "AI Token 产业调研 —— 数据清单与交叉验证记录"
+type: ai-token
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # AI Token 产业调研 —— 数据清单与交叉验证记录
 
 > 整理日期：2026/07/06

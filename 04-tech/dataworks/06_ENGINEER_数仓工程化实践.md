@@ -1,3 +1,12 @@
+---
+title: "AI DataWorks — 数仓工程化实践与业务落地指南"
+type: tech-practice
+date: 2026-07-02
+tags: []
+status: active
+source: ""
+---
+
 # AI DataWorks — 数仓工程化实践与业务落地指南
 
 ## 一、AI-ready Data 的工程化建设

@@ -1,3 +1,12 @@
+---
+title: "Victor Dibia 深度调研：从 LIDA 到 Microsoft Agent Framework，一位 Agent 平台架构师的思想演进"
+type: people-analysis
+date: 2026-07-18
+tags: []
+status: active
+source: ""
+---
+
 # Victor Dibia 深度调研：从 LIDA 到 Microsoft Agent Framework，一位 Agent 平台架构师的思想演进
 
 > 调研日期：2026-07-18

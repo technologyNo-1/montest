@@ -1,3 +1,12 @@
+---
+title: "Leopold Aschenbrenner（利奥波德·阿申布伦纳）个人背景与近 360 天思想体系系统化梳理总结"
+type: people-analysis
+date: 2026-07-04
+tags: []
+status: active
+source: ""
+---
+
 # Leopold Aschenbrenner（利奥波德·阿申布伦纳）个人背景与近 360 天思想体系系统化梳理总结
 
 > 数据来源：公开播客、13F 持仓文件、媒体报道、165 页长篇论文

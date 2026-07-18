@@ -1,3 +1,12 @@
+---
+title: "Alex Karp & Peter Thiel 深度联合研究报告"
+type: people-analysis
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # Alex Karp & Peter Thiel 深度联合研究报告
 
 > 调研日期：2026-07-06 | 方法：3 并行子 Agent + 交叉验证 + 系统化合成

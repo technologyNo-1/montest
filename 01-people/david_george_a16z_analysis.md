@@ -1,3 +1,12 @@
+---
+title: "大卫·乔治（David George）— 背景、思想体系与近360天访谈系统化梳理"
+type: people-analysis
+date: 2026-07-15
+tags: []
+status: active
+source: ""
+---
+
 # 大卫·乔治（David George）— 背景、思想体系与近360天访谈系统化梳理
 
 > 数据来源：a16z 官方博客/播客、Bloomberg Odd Lots、Invest Like the Best、20VC、TechCrunch Disrupt、Fortune Term Sheet Next、Forbes 等

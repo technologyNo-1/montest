@@ -1,3 +1,12 @@
+---
+title: "大脑三件套 × AI Agent：海马体 · 前额叶 · 丘脑"
+type: tech-practice
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # 大脑三件套 × AI Agent：海马体 · 前额叶 · 丘脑
 
 > 一句话记住：**海马体帮你回忆，前额叶帮你思考，丘脑帮你协调。**

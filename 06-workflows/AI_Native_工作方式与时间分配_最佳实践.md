@@ -1,3 +1,12 @@
+---
+title: "AI Native 时代的工作方式与时间分配 —— 最佳实践框架"
+type: workflow
+date: 2026-06-08
+tags: []
+status: active
+source: ""
+---
+
 # AI Native 时代的工作方式与时间分配 —— 最佳实践框架
 
 > **讨论日期：** 2026-06-08

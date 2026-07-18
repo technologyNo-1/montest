@@ -1,3 +1,12 @@
+---
+title: "Spark 大规模指标计算：问题发现、排查、解决与性能调优最佳实践"
+type: tech-practice
+date: 2026-06-16
+tags: []
+status: active
+source: ""
+---
+
 # Spark 大规模指标计算：问题发现、排查、解决与性能调优最佳实践
 
 > 以字节跳动典型场景为例：每天 PB 级数据、数千个 Spark Job、计算数百个业务指标（DAU、留存、LTV、漏斗转化等）。

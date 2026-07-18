@@ -1,3 +1,12 @@
+---
+title: "TokenLens 第二轮：真实落地全链路设计"
+type: ai-token
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # TokenLens 第二轮：真实落地全链路设计
 
 > 基于 12 份调研报告 + 竞品分析 + 第一性原理推演

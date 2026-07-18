@@ -1,3 +1,12 @@
+---
+title: "AI Token 产业调研 —— 关键补充讨论与反向思考"
+type: ai-token
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # AI Token 产业调研 —— 关键补充讨论与反向思考
 
 > 本文件是对主报告 `ai_token_industry_deep_research.md` 的补充讨论

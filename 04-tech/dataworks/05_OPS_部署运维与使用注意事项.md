@@ -1,3 +1,12 @@
+---
+title: "AI DataWorks — 部署运维与使用注意事项"
+type: tech-practice
+date: 2026-07-02
+tags: []
+status: active
+source: ""
+---
+
 # AI DataWorks — 部署运维与使用注意事项
 
 ## 一、部署架构

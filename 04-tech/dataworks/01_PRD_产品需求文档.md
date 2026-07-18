@@ -1,3 +1,12 @@
+---
+title: "AI DataWorks — 端到端智能数据分析平台"
+type: tech-practice
+date: 2026-07-02
+tags: []
+status: active
+source: ""
+---
+
 # AI DataWorks — 端到端智能数据分析平台
 
 ## 一、项目背景与定位

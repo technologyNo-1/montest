@@ -1,3 +1,12 @@
+---
+title: "AI DataWorks — 核心代码架构设计"
+type: tech-practice
+date: 2026-07-02
+tags: []
+status: active
+source: ""
+---
+
 # AI DataWorks — 核心代码架构设计
 
 ## 一、项目结构

@@ -1,3 +1,12 @@
+---
+title: "Peter Steinberger (@steipete) 深度研究报告"
+type: people-analysis
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # Peter Steinberger (@steipete) 深度研究报告
 
 > 调研日期：2026-07-06 | 方法：3 并行子 Agent + 交叉验证 + 系统化合成

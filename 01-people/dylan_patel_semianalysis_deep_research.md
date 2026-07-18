@@ -1,3 +1,12 @@
+---
+title: "Dylan Patel & SemiAnalysis 深度研究报告"
+type: people-analysis
+date: 2026-07-07
+tags: []
+status: active
+source: ""
+---
+
 # Dylan Patel & SemiAnalysis 深度研究报告
 
 > 调研日期：2026-07-07 | 方法：2 并行子 Agent + 交叉验证 + 系统化合成

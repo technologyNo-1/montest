@@ -1,3 +1,12 @@
+---
+title: "AI Agent 超级小团队创业：全球盈利案例分析与中国市场落地策略报告"
+type: industry-report
+date: 2026-06-10
+tags: []
+status: active
+source: ""
+---
+
 # AI Agent 超级小团队创业：全球盈利案例分析与中国市场落地策略报告
 
 > **撰写日期：2026年6月10日**

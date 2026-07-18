@@ -1,3 +1,12 @@
+---
+title: "Agent 3 关键数据可视化洞察"
+type: ai-token
+date: 2026-07-06
+tags: []
+status: active
+source: ""
+---
+
 # Agent 3 关键数据可视化洞察
 
 > 本文件聚焦于 Agent 3 产出的**核心数据关系可视化描述**和可操作的优先级建议

@@ -1,3 +1,12 @@
+---
+title: "Teknium（Ryan Teknium）个人背景与近 360 天思想体系系统化梳理总结"
+type: people-analysis
+date: 2026-07-05
+tags: []
+status: active
+source: ""
+---
+
 # Teknium（Ryan Teknium）个人背景与近 360 天思想体系系统化梳理总结
 
 > 数据来源：公开播客、GitHub/HuggingFace、Nous Research 官方博客、媒体报道

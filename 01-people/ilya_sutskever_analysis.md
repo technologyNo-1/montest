@@ -1,3 +1,12 @@
+---
+title: "Ilya Sutskever（伊利亚·苏茨克维）个人背景与近 360 天思想体系系统化梳理总结"
+type: people-analysis
+date: 2026-07-05
+tags: []
+status: active
+source: ""
+---
+
 # Ilya Sutskever（伊利亚·苏茨克维）个人背景与近 360 天思想体系系统化梳理总结
 
 > 数据来源：公开播客、访谈、法庭证词、学术论文、媒体报道

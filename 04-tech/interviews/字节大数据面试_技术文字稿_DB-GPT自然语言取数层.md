@@ -1,3 +1,12 @@
+---
+title: "字节大数据开发岗 · 技术文字稿"
+type: tech-practice
+date: 2026-07-08
+tags: []
+status: active
+source: ""
+---
+
 # 字节大数据开发岗 · 技术文字稿
 ## 用 DB-GPT 在 PB 级数仓上构建「可信自然语言取数层」
 

@@ -1,3 +1,12 @@
+---
+title: "Serenity (@aleabitoreddit) 推文内容系统化梳理与总结"
+type: people-analysis
+date: 2026-07-04
+tags: []
+status: active
+source: ""
+---
+
 # Serenity (@aleabitoreddit) 推文内容系统化梳理与总结
 
 > 数据来源：X (Twitter) 公开推文 + 第三方追踪档案 + 中英文媒体报道

@@ -1,3 +1,12 @@
+---
+title: "AI DataWorks — 端到端智能数据分析平台"
+type: tech-practice
+date: 2026-07-02
+tags: []
+status: active
+source: ""
+---
+
 # AI DataWorks — 端到端智能数据分析平台
 
 > **定位**：用自然语言提问 → 语义层精确理解 → 生成验证过的 SQL → 给出带置信度的分析结论

@@ -1,3 +1,12 @@
+---
+title: "黄仁勋（Jensen Huang）思想体系与近期访谈系统化梳理总结"
+type: people-analysis
+date: 2026-07-04
+tags: []
+status: active
+source: ""
+---
+
 # 黄仁勋（Jensen Huang）思想体系与近期访谈系统化梳理总结
 
 > 数据来源：公开博客、播客访谈、GTC 主题演讲、媒体专访

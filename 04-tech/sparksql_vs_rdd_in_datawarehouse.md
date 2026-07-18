@@ -1,3 +1,12 @@
+---
+title: "数仓里用 SparkSQL 还是手写 RDD 算子？—— 字节大数据架构师 2026 落地实践"
+type: tech-practice
+date: 2026-06-30
+tags: []
+status: active
+source: ""
+---
+
 # 数仓里用 SparkSQL 还是手写 RDD 算子？—— 字节大数据架构师 2026 落地实践
 
 > **核心结论：能用 SQL 的必须用 SQL，需要手写的场景有且仅有四类。在字节跳动的数仓体系里，SparkSQL（含 DataFrame DSL）占比 >90%，手写 RDD 的场景 <3%，其余是 PySpark UDF / Java UDAF 等混合模式。下面拆开讲。**
