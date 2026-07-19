@@ -1,6 +1,6 @@
 # 01-people · 人物思想深度调研
 
-> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 19 篇。
+> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 20 篇。
 > 交叉网络见 [[INDEX]]。
 
 ## a16z 合伙人系列
@@ -41,3 +41,8 @@
 | [[dylan_patel_semianalysis_deep_research]] | SemiAnalysis Dylan Patel |
 | [[victor_dibia_analysis]] | Victor Dibia |
 | [[serenity_tweets_analysis]] | Serenity 投资博主推文分析（瓶颈理论） |
+
+## AI 实验室 / 前沿安全部门
+| 文件 | 一句话 |
+|---|---|
+| [[anthropic_openai_ai_forecasting_depts_analysis]] | Anthropic & OpenAI 预测/前沿安全部门：背景、思想演进与近 360 天访谈 |

@@ -33,9 +33,10 @@
 
 - **Token 经济** ← [[ai_token_industry_deep_research]] · [[shunwang_compute_power_analysis]] · [[semiconductor_2026_report]] · [[personal_token_strategy]]
 - **AI Agent** ← [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]] · [[Cresta_2026系统性总结]] · [[AI_Agent创业策略报告_2026]] · [[brain_agent_primer]]
-- **安全 / 治理** ← [[Cresta_2026系统性总结]] · [[训练公开人物AI大模型_完整实现与测评方案]]
+- **安全 / 治理** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[Cresta_2026系统性总结]] · [[训练公开人物AI大模型_完整实现与测评方案]]
 - **算力 / 半导体** ← [[semiconductor_2026_report]] · [[shunwang_compute_power_analysis]] · [[jensen_huang_thoughts_analysis]]
 - **大模型趋势** ← [[大模型收敛时代]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
+- **AGI 时间线 / 前沿安全** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
 - **大数据 / 数仓** ← [[spark-tuning-guide]] · [[sparksql_vs_rdd_in_datawarehouse]] · [dataworks 项目](./04-tech/dataworks/README.md)
 - **NL2SQL / 语义层** ← [dataworks](./04-tech/dataworks/README.md) · [[字节大数据面试_技术文字稿_DB-GPT自然语言取数层]]
 
