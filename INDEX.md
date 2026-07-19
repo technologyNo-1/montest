@@ -11,7 +11,7 @@
 - **大数据技术** → [04-tech](./04-tech/_index.md)
 - **求职职业** → [05-career](./05-career/_index.md)
 - **工作方法论** → [06-workflows](./06-workflows/_index.md)
-- **论文总结** -> [07-paper](./07-paper/_index.md)
+- **论文总结** → [07-paper](./07-paper/_index.md)
 
 ## 人物关系网络
 
