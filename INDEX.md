@@ -27,6 +27,9 @@
 ### 产业领袖
 [[jensen_huang_thoughts_analysis]]（黄仁勋·五层蛋糕）· [[karp_thiel_deep_research]]（Thiel / Palantir）
 
+### 宏观经济学家 / 政策学者
+[[ben_bernanke_thoughts_analysis]]（前美联储主席·诺奖·大萧条与 QE·近 360 天 AI 治理）
+
 ### 分析师 / 投资人
 [[dylan_patel_semianalysis_deep_research]]（SemiAnalysis）· [[victor_dibia_analysis]] · [[serenity_tweets_analysis]]（投资博主·瓶颈理论）
 
@@ -38,6 +41,8 @@
 - **算力 / 半导体** ← [[semiconductor_2026_report]] · [[shunwang_compute_power_analysis]] · [[jensen_huang_thoughts_analysis]]
 - **大模型趋势** ← [[大模型收敛时代]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
 - **AGI 时间线 / 前沿安全** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
+- **宏观 / 货币政策** ← [[ben_bernanke_thoughts_analysis]] · [[serenity_tweets_analysis]]
+- **AI 治理 / 劳动力市场** ← [[ben_bernanke_thoughts_analysis]] · [[anthropic_openai_ai_forecasting_depts_analysis]] · [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]
 - **大数据 / 数仓** ← [[spark-tuning-guide]] · [[sparksql_vs_rdd_in_datawarehouse]] · [dataworks 项目](./04-tech/dataworks/README.md)
 - **NL2SQL / 语义层** ← [dataworks](./04-tech/dataworks/README.md) · [[字节大数据面试_技术文字稿_DB-GPT自然语言取数层]]
 
