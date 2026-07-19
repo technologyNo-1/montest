@@ -2,6 +2,15 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-19 · 新增 07-paper 分类
+
+**操作**：新增论文总结分类，首篇论文入库。
+
+- 新建 `07-paper/` 分类（type: `paper-summary`）：约定论文总结追加到 `07-paper/paper_summaries.md` 单文件，顶部索引同步
+- 首篇收录：Anthropic《Labor Market Impacts of AI: A New Measure and Early Evidence》（Massenkoff & McCrory, 2026-03-05）中文总结
+- 更新 `CLAUDE.md` §2（6→7 类）、`INDEX.md`（主题入口）、本日志
+- 已存 memory：论文总结归 07-paper（以后自动）
+
 ## 2026-07-19 · ingest 新增
 
 **操作**：新增 AI 预测/前沿安全部门调研入库 `01-people/`。
