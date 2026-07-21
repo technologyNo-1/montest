@@ -2,6 +2,13 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-21 · 升级（深层相似性 A -> B 档）
+
+**操作**：将 `deep_similarity_training_2026-07-21.md` 从 A 档浅扫升级为 B 档中度整合。
+
+- 实践维度（训练/测试/loop/方案/能力差异）补实验/数据/理论支撑：Gick & Holyoak 迁移率数据（基线~10%->提示后~70%、自发迁移~10-20%）、Chi 专家新手分类、Gentner & Namy 对比学习、生成效应（Slamecka & Graf）、测试效应（Roediger & Karpicke 2006）、形成性评估（Black & Wiliam 1998）、RAT 信度（~0.8）、刻意练习 + 分散练习周期支撑
+- 契合 [[large-research-workflow-patterns]] 三档深度方法论：B 档 = 浅扫 + 实践维度补实验数据（用户"不需要深度"时默认）；"不需要深度"≠"只要结论"
+
 ## 2026-07-21 · ingest 新增（深层相似性）
 
 **操作**：新增认知/学习方法论文档入库 `06-workflows/`。
