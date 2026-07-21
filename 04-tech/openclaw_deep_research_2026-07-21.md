@@ -4034,6 +4034,288 @@ v0.12.0("The Curator release", 2026-04-30)进一步引入 **`hermes curator`**:�
 - Honcho 用户建模:https://github.com/plastic-labs/honcho
 - pi-mono 引擎:https://github.com/earendil-works/pi-mono
 
+
+---
+
+## 二十、Loop engineering
+
+> Loop engineering 是 OpenClaw harness 的核心机制。它把"模型输出即控制信号"的无约束 LLM,封装进一个**可观测、可中断、可恢复、可审计**的确定性循环。本报告基于 arXiv:2603.27517 安全分析论文(470 条 advisory 的一手 patch-differential 证据)、官方背书的 DeepWiki 代码级知识库(索引 commit 525db3,2026-07-15)、GitHub 仓库 `openclaw/openclaw` 与官方文档站 getopenclaw.ai/docs 综合撰写。
+
+### 0. 信源验证说明(先验真,再深挖)
+
+本次调研通过 HTTP 直连(走 Clash 代理)逐个验证了任务所列信源的真实性,结论如下:
+
+| 信源 | 验证结果 | 关键证据 |
+|---|---|---|
+| arXiv:2603.27517 | ✅ 真实 | 标题《A Security Analysis of the OpenClaw AI Agent Framework》,470 advisories,Gateway+Node-Host 组合成未认证 RCE |
+| github.com/openclaw/openclaw | ✅ 真实 | MIT,README 确认,指向 docs.openclaw.ai 与 deepwiki.com/openclaw/openclaw |
+| getopenclaw.ai | ✅ 真实 | 标题"OpenClaw Guide",/docs 含 channels/configuration/gateway/skills 子页 |
+| docs.openclaw.ai | ✅ 真实 | 官方文档站(README 主指向) |
+| DeepWiki openclaw/openclaw | ✅ 真实且高价值 | 官方 README 直接引用,代码级章节,含 3-agent-runtime/3.1-execution-pipeline/3.4-tools-system/3.6-context-compaction/2.4-session/7-security |
+| SamurAIGPT/awesome-openclaw | ⚠️ 未深入 | GitHub 返回 200,本轮未取内容,非核心信源 |
+
+> 注:Tavily MCP 本轮因 plan usage limit 持续不可用(search/extract 均报错),改用 curl 直连抓取一手内容。下文所有 OpenClaw 细节均来自上述真实源;"与其他框架对比"部分基于公开资料的通用知识,已显式标注。
+
+---
+
+### 1. 架构机制与控制流
+
+#### 1.1 Pi Agent Core 嵌入式 loop(harness 的心脏)
+
+OpenClaw 的 Agent Runtime"由 **Pi Agent Core** 驱动,叠加 OpenClaw 自有的沙箱、记忆、认证与 failover 扩展"(DeepWiki 3-agent-runtime 正文)。loop 的入口是嵌入式 runner:
+
+- **入口点**:`runEmbeddedPiAgent`(`src/agents/pi-embedded-runner/run.ts`)——解析 auth profile、选模型,在**带 failover 的 attempt loop**中向 LLM Provider 提交 turn(arXiv §2.1)。
+- **工具拦截层**:模型发出的 tool call **不直接执行**,而是被 `src/agents/pi-embedded-subscribe/handlers/tools.ts` 的 handler 拦截,分两条路:① 进程内执行(文件读、web fetch);② 作为 **`node.invoke` frame** 转发到 Gateway,由 Local Execution 在宿主侧执行(arXiv §2.1)。
+- **customTools 注入**:Pi 原生 tool runtime 被 OpenClaw 契约接管——`extensions/codex/src/app-server/openclaw-owned-tool-runtime-contract.ts` 明确了"OpenClaw 拥有的 tool runtime 契约",工具由 `createOpenClawCodingTools`(`src/agents/agent-tools.ts:39`)工厂组装注入。这就是任务所述"清空 Pi built-in tools、用 customTools 注入 OpenClaw 工具链"的代码落点:Pi 只保留推理 loop 骨架,工具语义完全由 OpenClaw 重定义。
+
+> 这构成 harness 的核心范式:**Pi 提供 while-True 推理骨架,OpenClaw 接管工具语义与执行边界**。模型不再能"自由调用任意工具",每一次 tool call 都要穿过 OpenClaw 的 handler、策略层与审批层。
+
+#### 1.2 五步 loop:监听 → 路由 → 规划 → 执行 → 反馈
+
+| 步骤 | 机制 | 关键源/代码 |
+|---|---|---|
+| ① 监听 | Channel adapter `src/channels/allow-from.ts` 计算 **canonical session key**,把入站消息 dispatch 到 Gateway 的 command queue | arXiv §2.1 |
+| ② 路由 | Gateway 作为中央控制平面与消息 broker,将 `node.invoke` frame 从 Agent Runtime 路由到对应 Local Execution 进程 | arXiv §2.1;DeepWiki 2-gateway |
+| ③ 规划 | 每个 agent turn 开始时,embedded runner 把 `CLAUDE.md`、已加载 skill 指令、历史会话 **prepend 进 LLM context window**;Memory & Knowledge System 提供 session history / 长期上下文 / bootstrap 文件 | arXiv §2.1;DeepWiki 3.2-system-prompt-and-context |
+| ④ 执行 | tool call 经 `handlers/tools.ts` 拦截 → `applyExecPolicyLayer` 策略层 → 沙箱/宿主执行 → `createSandboxedWriteTool` 限定工作区 | DeepWiki 3.4-tools-system |
+| ⑤ 反馈 | 结果经 `ToolOutcomeObserver` 观测,写入 `session-transcript-json`(即 .jsonl 转录),`event-projector`/`context-engine-projection` 投影事件,`agent-task-tracking` 追踪任务态 | DeepWiki 2.4 / 3.6 |
+
+#### 1.3 工具调用循环与终止条件
+
+- **循环结构**:`attempt` 是基本执行单元(`src/agents/embedded-agent-runner/run/attempt.ts`、`src/agents/command/attempt-execution.ts`、`extensions/codex/src/app-server/run-attempt.ts`)。一次 attempt = 提交 turn → 模型输出(含 tool call)→ handler 执行 → 结果回灌 → 继续下一 turn,直到模型不再发 tool call。
+- **终止判定**:由 `src/agents/embedded-agent-runner/run/terminal-outcome.ts` 给出 terminal outcome;`run.before-agent-finalize.test.ts` 表明 loop 在 agent finalize 前做收尾。即 **finish 语义由 terminal-outcome 模块统一裁决**(而非裸用 provider 的 `finish_reason`)——这是 harness 把"模型说停"转化为"系统确认停"的关键一环。
+- **turn 准入**:`reply-turn-admission.ts` 控制是否接纳新 turn,防止并发 turn 互相踩踏;`run-attempt.turn-watches` 监视 turn 生命周期。
+
+#### 1.4 步数/轮数限制、超时、可中断
+
+| 机制 | 实现源 | 作用 |
+|---|---|---|
+| attempt 超时 | `extensions/codex/src/app-server/attempt-timeouts.ts` | 单次 attempt 时间上限 |
+| 空闲断路器 | `src/agents/embedded-agent-runner/run/idle-timeout-breaker.ts` | 长时间无产出即断路,防卡死/静默无限循环 |
+| compaction 聚合超时 | `run/compaction-retry-aggregate-timeout.ts` | 压缩重试的总超时,防 compaction 反复重试拖垮 loop |
+| 超时触发压缩 | `run.timeout-triggered-compaction.test.ts` | 超时与压缩联动:超时不是简单终止,而是触发上下文压缩续命 |
+| 可中断/转向 | `extensions/codex/src/app-server/run-attempt.steering.test.ts` | loop 运行中可 steering(转向/干预),支持人机接管 |
+| 心跳过滤 | `src/auto-reply/heartbeat-filter.ts` + `dispatch.freshness` | always-on 场景下按心跳与新鲜度决定是否响应,过滤陈旧触发 |
+
+#### 1.5 可恢复:进程崩了 loop 状态怎么办
+
+OpenClaw 的 loop 状态不只活在内存,而是**落盘 + 可重建**:
+
+- **状态持久化**:`src/config/sessions/session-accessor.sqlite.ts`(SQLite 会话存储)、`session-history-state.ts`、`state-migrations.ts`(状态版本迁移)。任务所述"状态落 `~/.openclaw/`"与此一致。
+- **崩溃恢复**:`extensions/codex/src/app-server/codex-app-server-recovery.ts`(codex 后端崩溃恢复)、`auto-reply/reply/dispatch-from-config.stale-recovery.test.ts`(陈旧会话恢复)、`session-init-conflict-retry.ts`(会话初始化冲突重试)。
+- **优雅关闭**:`src/gateway/drain-active-sessions-for-shutdown.test.ts`——关闭前 drain 活跃 session,保证 loop 不被硬切断;`run-attempt-thread-cleanup.ts` 清理 attempt 线程资源。
+- **工具结果持久化**:`session-tool-result-guard.ts` + `tool-result-persist-hook`——tool result 落盘,即使 loop 中途崩溃,已执行的工具结果不丢,重建后可续。
+- **上下文重建**:`sanitizeSessionHistory`(context-rebuild path)在重建时按 provenance 重注解,确保恢复后的 context 与原始语义一致。
+
+> 范式:**loop 状态 = SQLite 会话 + .jsonl transcript + 落盘 tool result**。崩溃后由 recovery + stale-recovery + state-migrations 重建,从最近一致点续跑,而非从头。
+
+---
+
+### 2. Loop 的工程化
+
+#### 2.1 loop 与权限/沙箱/HITL 的结合
+
+工具调用在 loop 中需穿过"审计 + 安全检查"才执行,生命周期为 4 步(DeepWiki 3.4-tools-system):
+
+1. **Inventory Resolution**:依 policy / tool profile / allowlist-denylist 决定模型可见工具(`agent-tools.ts:86-97`)。
+2. **Pre-Execution Hooks**:`wrapToolWithBeforeToolCallHook`(`agent-tools.before-tool-call.ts:33`)在执行前包装工具,处理 **loop detection(循环检测)、plugin approvals、diagnostic telemetry**(`before-tool-call.ts:12-25`)。这是 HITL 与无限循环防御的挂载点。
+3. **Schema Normalization**:`normalizeToolParameters` 适配各 provider 约束。
+4. **Execution Handling**:路由到内部 handler,结果经 `ToolOutcomeObserver` 可观测。
+
+HITL 的核心是 **`ExecApprovalManager`**:Gateway 维护它来"序列化 pending 的命令审批请求"(arXiv §2.1)——即需要审批的命令进入排队,逐条人工确认,既保证 HITL 不丢失,又避免审批并发冲突。沙箱侧:`applyExecPolicyLayer` + `createSandboxedWriteTool` + Docker sandbox(exec policy、tool dispatch、sandbox 三层隔离)。
+
+#### 2.2 错误处理与重试
+
+OpenClaw 的 failover 不是单一重试,而是**分层、跨 provider 的回退链**(从 test 文件名即可读出策略矩阵):
+
+| 失败类型 | 处理源 | 策略 |
+|---|---|---|
+| 空错误 | `run.empty-error-retry.test.ts` | 空响应重试 |
+| 不完整 turn | `run.incomplete-turn.test.ts` / `incomplete-turn.ts` | 截断/不完整 turn 补全 |
+| codex 后端 5xx | `run.codex-server-error-fallback.test.ts` + `codex-app-server-recovery.ts` | server error 回退 + 后端恢复 |
+| 跨 provider 回退 | `run.cross-provider-fallback-error-context.test.ts` | 切换 provider 并保留错误上下文 |
+| compaction 重试 | `run/compaction-retry-aggregate-timeout.ts` | 压缩失败重试(带总超时) |
+| 会话初始化冲突 | `session-init-conflict-retry.ts` | 并发初始化冲突重试 |
+| 运行中切模型 | `src/agents/live-model-switch.ts` | loop 不中断的前提下热切模型 |
+
+> 上层统称 **attempt loop with failover**(arXiv):一次 attempt 失败不终结 loop,而是按回退链降级(provider/模型/后端),把"模型抖动"吸收在 loop 内部。
+
+#### 2.3 loop 可观测性/审计(每步 .jsonl)
+
+- **转录**:`src/gateway/session-transcript-json.ts` + `session-transcript-files.fs.ts` + `session-transcript-index.fs.ts`——每个 session 的每步交互落 .jsonl 转录并建索引,可搜索(`session-utils.search.test.ts`)。
+- **事件投影**:`extensions/codex/src/app-server/event-projector.ts` + `context-engine-projection.ts`——把 loop 事件流投影为可查询状态。
+- **任务追踪**:`src/gateway/server-methods/agent-task-tracking.ts`。
+- **工具结果观测**:`ToolOutcomeObserver`(`before-tool-call.ts:132`)。
+- **跨会话溯源**:`inputProvenance`——`sessions_send` 与 agent-to-agent reply/announce 在调用目标 run 时附 `inputProvenance: { kind: "inter_session" }`,持久化于 `message.provenance.kind`(role 仍为 "user" 以兼容 provider);`sanitizeSessionHistory` 在 context-rebuild 时检测 inter_session provenance 并 prepend `[Inter-session message]` 注解;`hasInterSessionUserProvenance` guard 在构建 memory context 时跳过 inter-session turn,防止 routed agent 指令被持久化重放(arXiv §5.8 / §6.6)。这是 loop 审计在多 agent 编排上的延伸。
+
+#### 2.4 loop 与 Lane Queue(串行保有序,跨 session 并行)
+
+- **per-lane CommandQueue**:Gateway 维护"按 lane 的 CommandQueue,串行化发往同一 session 的并发消息"(arXiv §2.1)。
+- **sequential key**:`extensions/telegram/src/sequential-key.ts`——计算串行键,保证同一 session/key 内严格有序。
+- **reasoning lane coordinator**:`extensions/telegram/src/reasoning-lane-coordinator.test.ts`——协调推理 lane。
+- **queue drain + identity guard**:`src/auto-reply/reply/queue/drain.ts` + `drain.identity-guard.test.ts`——drain 时做身份守卫,防跨 lane 身份串扰。
+
+> 范式:**Lane = (session key 串行)×(跨 session 并行)**。同一会话内 loop 步骤严格有序(避免状态竞态),不同会话间天然并行(吞吐)。
+
+#### 2.5 loop 与 compaction(长 loop 续命,Pre-Compaction Memory Flush)
+
+OpenClaw 的 compaction 不是单一触发,而是**三种触发 + 续接 + 维护**的完整工程(DeepWiki 3.6-context-compaction):
+
+| 触发/机制 | 源 | 含义 |
+|---|---|---|
+| preemptive-compaction | `run/preemptive-compaction.ts` + `preemptive-compaction.bashexec.test.ts` | **预防性压缩**:未到溢出阈值前主动压缩(对应任务所述"Pre-Compaction Memory Flush"——压缩前先把记忆刷入 Memory & Knowledge System 长期记忆,压缩掉的历史仍可从长期记忆恢复) |
+| overflow-compaction.loop | `run.overflow-compaction.loop.test.ts` | 上下文溢出时触发压缩的 loop |
+| timeout-triggered-compaction | `run.timeout-triggered-compaction.test.ts` | 超时联动压缩 |
+| compaction-successor-transcript | `embedded-agent-runner/compaction-successor-transcript.ts` + `post-compaction-duplicate-prompt.test.ts` + `duplicate-prompt-loss.test.ts` | 压缩后续接 transcript,防"重复 prompt 丢失" |
+| context-engine-maintenance | `context-engine-maintenance.ts` | context engine 日常维护 |
+| tool-result-truncation | `tool-result-truncation.ts` | 工具结果截断(单条 tool result 过长时) |
+| compaction-retry-aggregate-timeout | `run/compaction-retry-aggregate-timeout.ts` | 压缩重试总超时 |
+
+> 关键设计:**compaction 是 loop 内的一等公民,而非外部补救**。attempt loop 检测到上下文逼近上限 → 触发 preemptive/overflow compaction → 刷盘长期记忆 → 生成 successor transcript → loop 继续。长程任务因此可"无限"跑下去,代价是历史被压缩为摘要 + 长期记忆检索。
+
+---
+
+### 3. Loop 与 harness engineering 的关系
+
+#### 3.1 loop 是 harness 的核心(Pi 嵌入式 loop)
+
+Harness 的本质是"在裸 LLM 之外加一层可控执行壳"。OpenClaw 的做法是**嵌入式 Pi loop**:
+
+- Pi Agent Core 提供 `while True` 推理骨架与 turn 提交机制(`runEmbeddedPiAgent` + attempt loop);
+- OpenClaw **接管 tool runtime**(`openclaw-owned-tool-runtime-contract`)、**拦截 tool call**(`pi-embedded-subscribe/handlers/tools.ts`)、**注入自定义工具链**(`createOpenClawCodingTools`);
+- 在 loop 的每个挂载点(执行前 hook、终止判定、超时、压缩、审批、转录)插入 OpenClaw 控制逻辑。
+
+如此,模型的"自由输出"被约束成"穿过策略管道的可执行动作"。
+
+#### 3.2 loop 如何把无约束 LLM 驯化为可控执行
+
+arXiv 论文开宗明义:"在 AI agent 框架中,**模型的输出本身就是控制信号**:一个 tool call 指示 runtime 执行 shell 命令、读写文件、驱动浏览器或跨通道发消息。"驯化正是通过对这每一类控制信号加边界:
+
+| 无约束行为 | 驯化机制 |
+|---|---|
+| 模型不停发 tool call | `terminal-outcome` 终止判定 + `reply-turn-admission` turn 准入 + `idle-timeout-breaker` 空闲断路 + `loop detection`(before-tool-call hook) |
+| 模型调用危险命令 | `applyExecPolicyLayer` exec allowlist + `ExecApprovalManager` 审批 + sandbox |
+| 模型上下文无限膨胀 | preemptive/overflow/timeout compaction + `tool-result-truncation` |
+| 模型/provider 抖动 | attempt loop with failover(跨 provider 回退、live-model-switch) |
+| loop 中途崩溃 | SQLite 会话 + .jsonl transcript + tool-result-persist + recovery |
+| 多 agent 指令污染 | `inputProvenance` + `sanitizeSessionHistory` + `hasInterSessionUserProvenance` guard |
+
+#### 3.3 模型能力趋同下 loop 工程的差异化
+
+当各家模型推理能力趋同,**差异化从"模型"转移到"loop 工程"**:谁的超时/重试/压缩/审批/串行策略更稳健,谁的 agent 更可控。OpenClaw 的差异化体现在:
+
+- **attempt + failover** 把 provider 不稳定吸收在 loop 内(而非暴露给用户);
+- **三态 compaction**(preemptive/overflow/timeout)让长程任务可续命;
+- **Lane Queue** 在 IM 高并发场景保有序;
+- **inputProvenance** 在多 agent 场景保溯源;
+- **terminal-outcome / turn-admission / idle-breaker** 三重终止防线防失控。
+
+#### 3.4 OpenClaw loop 的"调度者范式"(脚本 → Skill → Agent 三层确定性)
+
+OpenClaw 把执行确定性分三层,loop 在最上层:
+
+| 层 | 载体 | 确定性 | loop 角色 |
+|---|---|---|---|
+| 脚本层 | Automation & Cron(DeepWiki 目录)、`heartbeat-filter`、`dispatch.freshness` | 最高(定时/心跳触发) | 不进 loop,直接派发 |
+| Skill 层 | `SKILL.md` 指令文件,session start 时载入 context(arXiv §2.1);clawhub.ai 注册表 + 本地 plugin 目录 | 中(声明式能力包) | 为 loop 提供工具/指令清单 |
+| Agent 层 | `runEmbeddedPiAgent` attempt loop | 受控非确定(LLM 推理) | 真正的 agent loop |
+
+> 范式:**能用脚本确定的不用 Skill,能用 Skill 声明的不交给 Agent loop**。loop 只在需要 LLM 判断时启动,且启动时已被 Skill/脚本约束了工具集与指令边界。这是"调度者范式"——loop 是被调度的执行者,而非自主游荡的主体。
+
+---
+
+### 4. 与其他 agent loop 对比
+
+> 下表 OpenClaw 列来自上述一手源;其他框架列基于公开资料(Claude Code / OpenHands / SWE-agent / Aider / ReAct)的通用知识,仅作范式对照,非来自 OpenClaw 源。
+
+| 维度 | OpenClaw | Claude Code | OpenHands (OpenDevin) | SWE-agent | Aider | ReAct |
+|---|---|---|---|---|---|---|
+| loop 骨架 | Pi Agent Core 嵌入式 attempt loop + failover | tool-use agentic loop | 事件驱动(AgentController + event stream) | ACI(agent-computer interface)循环 | edit-test 循环 | Reason→Act→Observe 循环 |
+| 触发方式 | **always-on / IM 通道触发**(channel adapter → command queue) | 用户 CLI 交互触发 | 用户/web 触发 | 任务驱动(单 repo) | 用户命令驱动 | 单轮任务 |
+| 长程续命 | **三态 compaction**(preemptive/overflow/timeout)+ successor transcript | 自动压缩 | 事件历史 | 有限 | git 历史即状态 | 无 |
+| 状态持久化 | **SQLite session + .jsonl transcript + 落盘 tool result** | 会话文件 | 事件流持久化 | trajectory 文件 | git | 无 |
+| 跨会话 | **inputProvenance / inter_session 注解** | 受限 | 有 | 无 | 无 | 无 |
+| 串行控制 | **per-lane CommandQueue + sequential-key** | 单线程 | 事件队列 | 单线程 | 单线程 | 单线程 |
+| HITL | **ExecApprovalManager 序列化审批 + before-tool-call hook** | 权限提示 | 可配 | 较少 | 确认编辑 | 无 |
+| 可恢复 | **recovery + stale-recovery + drain-on-shutdown** | 会话续接 | 事件回放 | 重跑 | git 回滚 | 无 |
+| 终止判定 | **terminal-outcome + turn-admission + idle-breaker**(三重) | 模型停 + 限制 | 事件结束 | 任务完成 | 编辑完成 | 无更多 action |
+
+#### OpenClaw loop 的独特性
+
+1. **always-on / IM 触发**:不是"打开终端跑一次",而是常驻 Gateway,WhatsApp/Telegram/iMessage 等通道消息即触发(22+ 通道)。loop 需处理"随时被打断、随时续接"。
+2. **长程有状态**:三态 compaction + SQLite + .jsonl 让单次任务可跨数小时/数天,且崩溃可恢复。
+3. **跨会话溯源**:inputProvenance 把"这条消息来自另一个 agent"作为一等公民标注,防多 agent 编排时的指令污染——这是 IM 多 agent 场景特有的需求。
+4. **Lane Queue 并发模型**:IM 场景同一会话消息可能并发到达,必须串行保序,这是 CLI 类 agent(Claude Code/Aider)不需要面对的。
+5. **调度者范式**:脚本/Skill/Agent 三层确定性,loop 是被约束的执行者。
+
+---
+
+### 5. 可复用范式与经验沉淀
+
+#### 5.1 设计可控可恢复 agent loop 的范式(从 OpenClaw 提炼)
+
+1. **入口分离**:推理骨架(Pi)与工具语义(OpenClaw contract)解耦,工具 runtime 可被接管。
+2. **attempt 为基本单元**:以 attempt 而非 turn 为失败/重试/超时边界,粒度可控。
+3. **终止三重防线**:terminal-outcome(语义终止)+ turn-admission(准入)+ idle-breaker(兜底),任一失效仍有兜底。
+4. **状态落盘**:loop 状态 = 会话存储 + 转录 + 工具结果,三者皆持久化,崩溃可重建。
+5. **审计内建**:每步 .jsonl + 事件投影 + provenance,而非事后补。
+6. **串行 lane**:同一 key 串行、跨 key 并行,规避状态竞态。
+7. **compaction 一等公民**:压缩在 loop 内触发,带刷盘 + successor transcript,而非外部补救。
+
+#### 5.2 loop 终止 / 步数 / 超时的权衡
+
+| 杠杆 | 调大 | 调小 | OpenClaw 选择 |
+|---|---|---|---|
+| 步数/turn 上限 | 长程任务能完成,但失控风险高 | 安全但截断任务 | turn-admission 准入 + terminal-outcome 语义判定,辅以 idle-breaker 兜底 |
+| attempt 超时 | 容忍慢工具 | 快速失败但误杀 | attempt-timeouts + 超时联动 compaction(不简单终止,而是压缩续命) |
+| compaction 阈值 | 上下文利用率高 | 频繁压缩丢信息 | preemptive(提前)+ overflow(兜底)+ timeout(联动)三态自适应 |
+
+> 经验:**超时不等于终止**。OpenClaw 把超时作为 compaction 触发器,而非 loop 终止——这是长程任务的关键设计。
+
+#### 5.3 loop 中 human-in-the-loop 的位置
+
+OpenClaw 把 HITL 挂在 **before-tool-call hook**(执行前),而非 turn 后或 loop 外:
+
+- `wrapToolWithBeforeToolCallHook` 是统一挂载点,同时处理 loop detection、plugin approvals、telemetry;
+- `ExecApprovalManager` 把"需审批命令"序列化排队,人工逐条确认;
+- `run-attempt.steering` 允许 loop 运行中转向/干预(不只是批准/拒绝)。
+
+> 范式:**HITL 在工具执行前(而非模型输出后)**,且与循环检测、遥测共挂载点,避免"先执行再审批"的不可逆风险。
+
+#### 5.4 loop 的失败模式与防御
+
+| 失败模式 | 防御机制 |
+|---|---|
+| **无限循环**(模型反复发同一 tool call) | before-tool-call hook 的 `loop detection` + `idle-timeout-breaker` + `reply-turn-admission` |
+| **工具误用**(调危险命令/越权) | `applyExecPolicyLayer` allowlist + `ExecApprovalManager` 审批 + sandbox + `createSandboxedWriteTool` 工作区限制 |
+| **上下文爆炸** | preemptive/overflow/timeout compaction + `tool-result-truncation` + `context-engine-maintenance` |
+| **provider 抖动** | attempt loop with failover + `cross-provider-fallback` + `live-model-switch` + `codex-app-server-recovery` |
+| **崩溃丢状态** | SQLite session + .jsonl transcript + `tool-result-persist-hook` + `stale-recovery` + `drain-active-sessions-for-shutdown` |
+| **多 agent 指令污染** | `inputProvenance` + `sanitizeSessionHistory` 注解 + `hasInterSessionUserProvenance` guard |
+| **compaction 丢信息** | `compaction-successor-transcript` + `duplicate-prompt-loss` 防护 + preemptive 刷盘长期记忆 |
+
+#### 5.5 arXiv:2603.27517 发现的 loop 相关安全问题
+
+论文对 OpenClaw 做了 470 条 advisory 的系统性安全分析,多条直接落在 loop 工程上:
+
+1. **完整未认证 RCE Kill Chain(从 LLM tool call 到宿主进程)**:Gateway 与 Node-Host 子系统的 3 个 Moderate/High 漏洞,经 Cyber Kill Chain 的 Delivery → Exploitation → Command-and-Control 三阶段组合成完整 RCE 路径。具体:
+   - **Stage 1**:经 `gatewayUrl` 建立 SSRF primitive(§5.4.1);
+   - **Stage 2**:经 Agent Tool Interface 窃取 token(§5.4.2);
+   - **Stage 3**:**经 `node.invoke` 的 Exec Approval Bypass 实现 RCE**(§5.4.3)——即 loop 中 tool call 的审批被绕过,这是 loop 工程最致命的安全失效。
+2. **Exec allowlist 的 closed-world 假设失效**(§5.6):allowlist 假设"命令身份可经词法解析恢复",但被三种独立方式绕过:① shell line-continuation;② busybox/toybox multiplexer;③ GNU long-option abbreviation。根因(§5.6.4)是"词法模型 vs 语义现实"——loop 的策略层用词法判断命令,而 shell 用语义执行,两者不一致即被绕过。
+3. **恶意 skill 两阶段 dropper**(§5.2):通过 plugin channel 分发的恶意 `yahoofinance` skill,在 LLM context 内执行两阶段 dropper,**完全绕过 exec pipeline**——证明 skill 分发面是"任何 runtime policy primitive 之外的攻击向量"。即 loop 的 exec 策略对"在 context 内执行的 skill 逻辑"无能为力。
+4. **Inter-Session Context Contamination**(§5.8.2):跨会话上下文污染,对应 OpenClaw 用 `inputProvenance` + `sanitizeSessionHistory` 防御(§6.6 "Context Provenance as a Security Boundary")。
+5. **Indirect Prompt Injection**(§5.8.1):间接提示注入经任意进入 context window 的数据路径生效——论文强调"不仅文档正确性,还要防模型经任何到达 context window 的数据路径被对抗影响"。
+6. **结构性弱点:per-layer trust enforcement**(论文核心结论):"主导结构模式是**逐层、逐调用点**的信任执行,而非**统一策略边界**——这一设计属性使跨层组合攻击对层内局部修复系统性免疫。"这是 loop 工程最重要的教训:**loop 各环节(通道/gateway/agent/sandbox/exec/plugin)各自为政的策略,会被跨层组合击穿**。论文建议(§6)用 identity-anchored allowlist、URL provenance enforcement、semantic command interpretation、context provenance as boundary 等**统一边界**替代逐层打补丁。
+
+> 攻击面分布(§5.5):File & Process System 30 advisories、Sandbox Isolation 17、Browser Tooling 10;Exec Policy Engine 在严重度分布中占 46 条(24.2%)居首。即 **loop 的工具执行层是最大攻击面**。
+
+---
+
+### 范式沉淀(一句话提炼)
+
+> **可控可恢复的 agent loop = 嵌入式推理骨架(Pi)+ 被接管的工具 runtime + attempt 粒度的 failover + 三重终止防线 + 落盘可重建状态 + 内建审计 + 串行 lane + 一等公民 compaction + 执行前 HITL + 统一策略边界(而非逐层补丁)。** OpenClaw 的教训是:loop 越复杂,跨层组合攻击越要靠"统一边界"而非"层内加固"来防御——`node.invoke` 审批绕过、exec allowlist 词法/语义落差、skill dropper 绕过 exec pipeline,都是"逐层信任"被跨层击穿的实证。
+
 ---
 
 ## 信源汇总
@@ -4110,6 +4392,13 @@ v0.12.0("The Curator release", 2026-04-30)进一步引入 **`hermes curator`**:�
 - https://data-dave.medium.com/cardioclaw-an-observability-layer-for-ai-agent-scheduling-0977d9184979
 - https://datawhalechina.github.io/hello-claw/cn/build/chapter1
 - https://deepinfra.com/blog/openclaw-security-prompt-injection-supply-chain-attacks-hardening
+- https://deepwiki.com/openclaw/openclaw
+- https://deepwiki.com/openclaw/openclaw/2.4-session-and-state-management
+- https://deepwiki.com/openclaw/openclaw/3-agent-runtime
+- https://deepwiki.com/openclaw/openclaw/3.1-execution-pipeline
+- https://deepwiki.com/openclaw/openclaw/3.4-tools-system
+- https://deepwiki.com/openclaw/openclaw/3.6-context-compaction
+- https://deepwiki.com/openclaw/openclaw/7-security
 - https://dev.to/aws-builders/mastering-openclaw-on-aws-fine-tuning-personality-memory-and-soul-37ig
 - https://dev.to/benjaminsqlserver/stop-chatting-with-your-ai-start-scheduling-it-a-heartbeatmd-cron-tutorial-for-openclaw-4386
 - https://dev.to/ggondim/how-i-built-a-deterministic-multi-agent-dev-pipeline-inside-openclaw-and-contributed-a-missing-4ool
@@ -4119,6 +4408,7 @@ v0.12.0("The Curator release", 2026-04-30)进一步引入 **`hermes curator`**:�
 - https://dev.to/zeling_chen_73840b4951f53/understand-openclaw-by-building-one-6-agents-are-running-your-are-sleeping-4ooe
 - https://developer.aliyun.com/article/1714157
 - https://developers.redhat.com/articles/2026/04/09/build-resilient-guardrails-openclaw-ai-agents-kubernetes
+- https://docs.openclaw.ai
 - https://docs.openclaw.ai/automation
 - https://docs.openclaw.ai/automation/cron-jobs
 - https://docs.openclaw.ai/automation/tasks
@@ -4209,6 +4499,7 @@ v0.12.0("The Curator release", 2026-04-30)进一步引入 **`hermes curator`**:�
 - https://findskill.ai/blog/openclaw-skills-guide
 - https://florian-darroman.medium.com/openclaw-mac-mini-setup-the-step-by-step-guide-389337569f1a
 - https://fortune.com/2026/02/19/openclaw-who-is-peter-steinberger-openai-sam-altman-anthropic-moltbook
+- https://getopenclaw.ai/docs
 - https://gist.github.com/royosherove/971c7b4a350a30ac8a8dad41604a95a0
 - https://github.com/GetBindu/awesome-claude-code-and-skills/blob/main/readme.md
 - https://github.com/KimYx0207/AI-Coding-Guide-Zh/blob/main/docs/openclaw/07-%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F%E6%8C%87%E5%8D%97.md

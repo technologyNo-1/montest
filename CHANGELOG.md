@@ -2,6 +2,14 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-21 · ingest 追加（OpenClaw 补充 Loop engineering）
+
+**操作**：为 `04-tech/openclaw_deep_research_2026-07-21.md` 追加第二十章 Loop engineering。
+
+- 追加维度：Loop engineering（agent loop 工程化：Pi 嵌入式 loop / 五步控制流 / 终止与恢复 / failover 回退链 / HITL 与审计 / 与 Claude Code·Aider·OpenHands·SWE-agent 对比）
+- 数据来源：第 5 个 Workflow（1 agent）经 curl 直取 arxiv 2603.27517 + DeepWiki 代码级知识库；文档增至 20 章
+- 更新 `04-tech/_index.md`（维度数 19 -> 20）
+
 ## 2026-07-21 · ingest 追加（OpenClaw 补充 8 维度）
 
 **操作**：为 `04-tech/openclaw_deep_research_2026-07-21.md` 追加 8 个维度（十二~十九章）。
