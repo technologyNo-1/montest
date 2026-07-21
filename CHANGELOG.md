@@ -2,6 +2,15 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-21 · ingest 新增（OpenClaw）
+
+**操作**：新增技术调研入库 `04-tech/`。
+
+- 新增 `openclaw_deep_research_2026-07-21.md`：OpenClaw 全维度技术调研（11 维度）——设计理念与哲学 / 架构体系 / 核心解决方案 / PR审核合并自动化架构 / 安全争议与生态 / Context 处理 / 智能体编排 / 安全边界 / Memory 系统 / Build Skills / 自我迭代
+- 切入点：OpenClaw 是 2026 年 GitHub 历史增长最快的开源自托管 AI agent 框架（Peter Steinberger 创立，峰值 383K stars），其 harness engineering 范式与供应链安全治理教训值得沉淀
+- 数据来源：3 个 Workflow 并行深挖（5+3+3 维度）经 Tavily MCP 检索 arxiv 安全论文 2603.27517 / 官方仓库 / awesome-openclaw 生态；163K 字符 / 343 信源
+- 更新 `04-tech/_index.md`（散篇）、`INDEX.md`（AI Agent 概念交叉 + Peter Steinberger 关联 OpenClaw 创始人）
+
 ## 2026-07-19 · ingest 新增（伯南克）
 
 **操作**：新增人物思想调研入库 `01-people/`。

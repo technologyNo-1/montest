@@ -9,6 +9,7 @@
 | [[spark-tuning-guide]] | Spark 调优指南 |
 | [[sparksql_vs_rdd_in_datawarehouse]] | SparkSQL vs RDD 在数仓 |
 | [[brain_agent_primer]] | Brain Agent 入门 |
+| [[openclaw_deep_research_2026-07-21]] | OpenClaw 全维度技术调研（11 维度：理念/架构/方案/PR自动化/安全生态/context/编排/安全边界/memory/skills/自我迭代） |
 
 ## dataworks/ · 端到端智能数据分析平台（NL -> 语义层 -> SQL）
 | 文件 | 一句话 |

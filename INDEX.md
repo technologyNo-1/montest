@@ -12,6 +12,7 @@
 - **求职职业** → [05-career](./05-career/_index.md)
 - **工作方法论** → [06-workflows](./06-workflows/_index.md)
 - **论文总结** → [07-paper](./07-paper/_index.md)
+- **书籍资料** → [08-book](./08-book/_index.md)
 
 ## 人物关系网络
 
@@ -22,7 +23,7 @@
 [[ilya_sutskever_analysis]]（规模结束·价值函数）· [[leopold_aschenbrenner_analysis]]（瓶颈轮动）· [[teknium_nous_research_analysis]]（黏土论·去中心化）· [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]（空间智能）
 
 ### 创业者 / 实干派
-[[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]]（Glean）· [[pieter_levels_deep_research]]（独立开发）· [[peter_steinberger_deep_research]] · [[boris_cherny_analysis]]（Claude Code 之父）
+[[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]]（Glean）· [[pieter_levels_deep_research]]（独立开发）· [[peter_steinberger_deep_research]]（OpenClaw 创始人） · [[boris_cherny_analysis]]（Claude Code 之父）
 
 ### 产业领袖
 [[jensen_huang_thoughts_analysis]]（黄仁勋·五层蛋糕）· [[karp_thiel_deep_research]]（Thiel / Palantir）
@@ -36,7 +37,7 @@
 ## 概念交叉
 
 - **Token 经济** ← [[ai_token_industry_deep_research]] · [[shunwang_compute_power_analysis]] · [[semiconductor_2026_report]] · [[personal_token_strategy]]
-- **AI Agent** ← [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]] · [[Cresta_2026系统性总结]] · [[AI_Agent创业策略报告_2026]] · [[brain_agent_primer]]
+- **AI Agent** ← [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]] · [[Cresta_2026系统性总结]] · [[AI_Agent创业策略报告_2026]] · [[brain_agent_primer]] · [[openclaw_deep_research_2026-07-21]]
 - **安全 / 治理** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[Cresta_2026系统性总结]] · [[训练公开人物AI大模型_完整实现与测评方案]]
 - **算力 / 半导体** ← [[semiconductor_2026_report]] · [[shunwang_compute_power_analysis]] · [[jensen_huang_thoughts_analysis]]
 - **大模型趋势** ← [[大模型收敛时代]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
