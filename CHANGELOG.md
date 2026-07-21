@@ -2,6 +2,14 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-21 · ingest 追加（OpenClaw 补充 8 维度）
+
+**操作**：为 `04-tech/openclaw_deep_research_2026-07-21.md` 追加 8 个维度（十二~十九章）。
+
+- 追加维度：网关设置 / 长程任务 / 主动推送 / 容器化 / 本地部署 / token 消耗 / computer use 工程化 / Hermes agent 核心技术对比
+- 数据来源：第 4 个 Workflow（8 agent 并行）经 Tavily + curl 直取官方 `docs/gateway/` 源码文档与 arxiv 安全论文；文档增至 290K 字符 / 496 信源 / 19 章
+- 更新 `04-tech/_index.md`（维度数 11 -> 19）
+
 ## 2026-07-21 · ingest 新增（OpenClaw）
 
 **操作**：新增技术调研入库 `04-tech/`。

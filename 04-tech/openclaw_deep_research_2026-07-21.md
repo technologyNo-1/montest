@@ -2283,24 +2283,1783 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 
 > **一句话范式**:自我迭代 = **File-First 记忆做脑子 + Proposal 闸门做刹车 + Pulse/Push 双调度做心跳 + 分层 HITL 做安全带**。OpenClaw 的贡献不是发明了哪个齿轮,而是把这六个齿轮咬合成一个开源、本地优先、可常驻的 runtime,并率先把"post-prompting 时代"的 always-on agent 从概念变成可复刻的工程实物——同时用 15% 恶意技能、17% 原生防御率这些扎眼数字,诚实标注了自我进化的失控代价。
 
+
+---
+
+## 十二、网关设置
+
+> 信源说明:本节核心事实直接抓取自 OpenClaw 官方仓库 `github.com/openclaw/openclaw` 的 `docs/gateway/` 原始文档(对应 docs.openclaw.ai),以及 arXiv:2603.27517 一手安全论文。仓库与论文均经实测验证真实存在。Tavily 搜索配额耗尽后改用直连 curl 取官方 raw 文档,所得比搜索摘要更完整。
+
+---
+
+#### 1. 一句话定位与心智模型
+
+Gateway 是**随 agent 进程内嵌的单一 WebSocket 服务器**,在单端口(默认 `18789`)上**多路复用**四类流量:WebSocket 控制/RPC、HTTP API(`/v1/models`、`/v1/embeddings`、`/v1/chat/completions`、`/v1/responses`、`/tools/invoke`、可选 `/api/v1/admin/rpc`)、Control UI(SPA)、hooks(webhook)。它是整个系统的**控制平面 + 策略面 + 路由核心**,拥有 sessions、auth profiles、channels 与状态;其余一切都是 client(Operator、Node、WebChat)。
+
+可复用范式:**"一个 always-on 进程 + 单多路复用端口 + loopback 默认 + fail-closed 认证"**——把暴露面压到最小,把策略集中到一处。这与 arXiv:2603.27517 指出的"逐层信任 enforcement 而非统一策略边界"的结构性弱点正好对应:OpenClaw 的设计取向是把 Gateway 做成统一策略边界。
+
+来源:`docs/gateway/index.md`(Gateway runbook)、`docs/gateway/security/index.md`、arXiv:2603.27517。
+
+---
+
+#### 2. Gateway 完整配置项地图
+
+配置文件 `~/.openclaw/openclaw.json`(JSON5,可用 `OPENCLAW_CONFIG_PATH` 覆盖)。**严格校验**:未知键/类型错误/非法值 → Gateway **拒绝启动**(退出码 78),根级仅允许 `$schema` 例外。维护 last-known-good 副本;被拒写入存为 `<path>.rejected.<ts>`;防误删(丢 `gateway.mode`、丢 `meta` 块、文件缩水 >50% 一律拦截)。
+
+**`gateway.*` 核心字段:**
+
+| 字段 | 作用 / 默认 |
+|---|---|
+| `gateway.port` / `--port` / `OPENCLAW_GATEWAY_PORT` | WebSocket 端口,默认 `18789`。优先级 CLI → env → config → 18789 |
+| `gateway.bind` | `loopback`(默认)/ `lan` / `tailnet` / `auto` / `custom`;容器内默认变 `auto`(解析到 `0.0.0.0` 供端口转发),**但 Tailscale serve/funnel 激活时强制 loopback** |
+| `gateway.mode` | `local`(默认)/ `remote`;缺失或受损会触发 `Gateway start blocked: set gateway.mode=local` |
+| `gateway.auth` | `{mode, token, password, rateLimit, allowTailscale, trustedProxy}` |
+| `gateway.auth.mode` | `none`(仅私有 ingress)/ `token`(设了 `OPENCLAW_GATEWAY_TOKEN` 时默认)/ `password` / `trusted-proxy` |
+| `gateway.auth.rateLimit` | `{maxAttempts:10, windowMs:60000, lockoutMs:300000, exemptLoopback:true}` |
+| `gateway.tailscale` | `{mode:"serve"\|"funnel"\|"off", serviceName, resetOnExit, preserveFunnel}` |
+| `gateway.reload` | `{mode:"hybrid"\|"hot"\|"restart"\|"off", debounceMs:300}` |
+| `gateway.remote` | `{url, token, password, transport:"direct", sshTarget, remotePort, sshHostKeyPolicy:"strict", tlsFingerprint}` —— **客户端凭证源**,不单独构成服务端认证 |
+| `gateway.trustedProxies` | 反代 IP 数组;`gateway.allowRealIpFallback:false` |
+| `gateway.controlUi` | `{allowedOrigins, basePath, allowInsecureAuth, dangerouslyDisableDeviceAuth, dangerouslyAllowHostHeaderOriginFallback}` |
+| `gateway.handshakeTimeoutMs` | 默认 15000(`OPENCLAW_HANDSHAKE_TIMEOUT_MS`),低配主机可调大 |
+| `gateway.http.securityHeaders.strictTransportSecurity` | Gateway 自终结 HTTPS 时发 HSTS |
+| `gateway.push.apns.relay` | iOS 推送中继,注册绑定 gateway 身份(App Attest) |
+| `gateway.channelHealthCheckMinutes` / `channelStaleEventThresholdMinutes` / `channelMaxRestartsPerHour` | channel 健康监控 |
+| `gateway.nodes.pairing` | `{autoApproveCidrs(默认禁用), sshVerify(默认开)}` |
+| `discovery.mdns.mode` | `minimal`(默认)/ `full` / `off`;Bonjour 信标 `_openclaw-gw._tcp` |
+
+**热重载四模式**(watch `openclaw.json`):`hybrid`(默认,安全变更热应用、关键变更自动重启)、`hot`、`restart`、`off`。关键规则:**改 `gateway.*`(port/bind/auth/tailscale/TLS/HTTP/push)、`discovery`、`browser`、`plugins.load/installs` 必须重启 Gateway**;其余(channel/agent/models/session/tools/plugins.entries)热应用,channel 级变更只重启该 channel。例外:`gateway.reload` 与 `gateway.remote` 改动不触发重启。
+
+**环境变量与密钥**:`.env`(cwd)与 `~/.openclaw/.env`;配置串内 `${VAR_NAME}` 替换(仅大写名,缺失即报错);SecretRef(`source: env|file|exec`,`secrets.providers`)。`openclaw onboard` 默认**即使 loopback 也生成 token**(本地客户端仍需认证)。
+
+**配置 RPC(程序化更新,可复用范式)**:`config.schema.lookup`(取字段级 schema)→ `config.get`(+`hash` 乐观并发)→ `config.patch`(JSON merge patch,`replacePaths` 防数组被截断误删)→ `config.apply`(整替)。控制面写 RPC(`config.apply/patch`、`plugins.install`、`update.run`、`gateway.restart.request` 等)限速 **30 req/60s per method per device+IP**(post-auth backstop,非安全边界),重启合并 + **30s 冷却**。
+
+来源:`docs/gateway/configuration.md`、`docs/gateway/index.md`、`docs/gateway/security/rate-limiting.md`。
+
+---
+
+#### 3. 默认绑本机的安全考量(为什么是 127.0.0.1)
+
+**默认 `bind: "loopback"`** → 只接受同机连接,"攻击面被限制在本机 OS 层级"。三条 fail-closed 铁律:
+
+1. **认证默认必开**:无有效 auth 路径时,Gateway **拒绝 WebSocket 连接**(fail-closed),错误签名 `refusing to bind gateway ... without auth`(非 loopback 绑定无 auth 直接拒)。
+2. **loopback 不等于免认证**:onboarding 默认生成 token,本地客户端也要带 token。
+3. **明文 `ws://` 仅对 loopback/私有 IP(RFC1918)/link-local/CGNAT/`.local`/`.ts.net` 放行**;公网远程主机必须 `wss://`。
+
+**arXiv:2603.27517 的直接教训**(论文实测 470 条 advisory):Gateway + Node-Host 子系统的 **3 条中/高危 advisory 组合成一条完整的未认证 RCE 链**——从 LLM tool call 投递→利用→C2,直达主机进程。这正是官方把"Gateway 永远 loopback、公网由反代/Tailscale 接管"作为铁律的根因:Gateway 自身的认证/路由一旦直面公网且配置失当,RCE 链就从"理论"变"实践"。
+
+**信任边界矩阵**(安全总览给出,极具复用价值,澄清常见误读):
+
+| 边界/控制 | 含义 | 常见误读 |
+|---|---|---|
+| `gateway.auth` | 认证调用方对 gateway API 的访问 | "每帧都要签名才安全" |
+| `sessionKey` | 上下文/会话选择的路由键 | "session key 是用户鉴权边界" |
+| Node pairing/commands | 配对设备上的 operator 级远程执行 | "远程设备控制默认当不可信用户" |
+| `gateway.nodes.pairing.autoApproveCidrs` | 默认禁用的可信网络节点准入 | "禁用的 allowlist 自动是配对漏洞" |
+| `gateway.nodes.pairing.sshVerify` | 默认开的基于 key 的 SSH 配对 | "默认开=自动漏洞" |
+
+来源:`docs/gateway/security/index.md`(Trust boundary matrix / Network exposure)、arXiv:2603.27517。
+
+---
+
+#### 4. WebSocket 认证机制(协议级)
+
+**握手流程**(可复用范式:challenge→connect→hello-ok):
+
+1. 连接建立后 Gateway 先发 `connect.challenge` 事件;
+2. 客户端首帧**必须**是 `connect`(pre-auth 帧上限 64 KiB `MAX_PREAUTH_PAYLOAD_BYTES`),声明 **role + scopes + device**;
+3. Gateway 回 `hello-ok`:含 `snapshot`(presence/health/stateVersion/uptimeMs)+ `policy`(`maxPayload` 25MB、`maxBufferedBytes`、`tickIntervalMs`)+ `auth.deviceTokens`(协商后的 scopes);
+4. 缺权限返回 `MISSING_SCOPE`(含 `requiredScopes` 完整集合);非法/非 connect 首帧直接关闭。
+
+**角色与作用域**:`operator` / `node` 在 connect 时声明。Operator scopes 闭合集:`operator.read / .write / .admin / .approvals / .pairing / .talk.secrets`。`config.*`、`exec.approvals.*`、`update.*` 等保留前缀**恒解析为 `operator.admin`**。`node.pair.approve` 在 `operator.pairing` 之上还有基于待批请求声明 `commands` 的额外审批期检查。
+
+**四种 auth mode 的作用域语义(关键复用点)**:
+- `token` / `password`(共享密钥):**bearer 全有或全无**——恢复完整默认 operator scopes(`.admin/.approvals/.pairing/.read/.talk.secrets/.write`)+ owner 语义;`x-openclaw-scopes` **不能收窄**共享密钥路径。即"能调 `/v1/chat/completions` 的凭证 = 该 gateway 的全权 operator 密钥"。
+- `trusted-proxy`(身份感知反代):**按请求作用域**生效,`x-openclaw-scopes` 可收窄;省略则回落默认 operator 集合。
+- `none`:仅私有 ingress。
+- 同进程可信后端 client(`client.id:"gateway-client"`,`mode:"backend"`)在 loopback + 共享密钥下可省 device。
+
+**HTTP 侧**:`Authorization: Bearer <token>`(token)/ `Authorization: Basic base64(user:password)` 或 `X-OpenClaw-Password`(password);WS 侧 `wss://host:18789?token=` 或 `?password=`,或发 `{method:"auth",params:{token}}`。`openclaw doctor --generate-gateway-token` 生成;`openclaw models auth setup-token` 重置(错误码 1008 = token 认证失败)。
+
+**凭证优先级契约**(跨 call/probe/status/Discord exec-approval 共享,Node-Host 用同一契约但本地模式忽略 `gateway.remote.*`):
+- 显式 `--token`/`--password`/tool 的 `gatewayToken` 永远赢;`--url` **永不**回落 config/env 凭证(防误用)。
+- 本地模式:token = `OPENCLAW_GATEWAY_TOKEN` → `gateway.auth.token` → `gateway.remote.token`(仅本地未设时回落)。
+- 远程模式:token = `gateway.remote.token` → `OPENCLAW_GATEWAY_TOKEN` → `gateway.auth.token`。
+- SecretRef 显式配置但未解析 → **fail-closed**,不回落远程掩盖。
+
+**限流(暴力破解防线,可复用范式)**:
+
+| 面 | 默认 | 键 | loopback 豁免 |
+|---|---|---|---|
+| 认证失败 | 10次/60s → 锁 5min | IP + 凭证作用域 | 是(`exemptLoopback`) |
+| 浏览器 Origin 的 WS 认证失败 | 同上 | **按页面 Origin 分桶** | **否**(防本地恶意页面) |
+| Webhook `/hooks` | 20次/60s → 锁 60s,HTTP 429 | IP | 否 |
+| 控制面写 RPC | 30次/60s per method | method+device+IP | — |
+| 重启冷却 | 30s | 进程 | — |
+
+精妙处:**浏览器 Origin 路径强制不豁免 loopback**,且按 `browser-origin:https://evil.example` 分桶——本地恶意页面拿不到 localhost 免配额。所有限流器**进程内内存**,多 Gateway 不共享(重启清零,仅重启冷却跨进程内重启存活)。
+
+来源:`docs/gateway/protocol.md`、`docs/gateway/security/rate-limiting.md`、`docs/gateway/security/index.md`(Gateway WebSocket auth)。
+
+---
+
+#### 5. Gateway–Node–Host 信任流(用户重点)
+
+**心智模型:Gateway 与 Node 是"同一个 operator 信任域、两种角色"**:
+- **Gateway** = 控制平面 + 策略面(`gateway.auth`、tool policy、routing);
+- **Node** = 配对该 Gateway 的**远程执行面**(commands、device actions、host-local 能力);
+- 认证到 Gateway 的调用方在 Gateway scope 受信;**配对之后,node 上的动作即该 node 上的 operator 受信动作**。
+
+**Node-Host 特权执行进程**:Node 是跑在设备/主机上的特权执行体,接收 Gateway 经 WebSocket 下发的 `node.invoke` RPC 执行 `system.run` 等 host-local 能力。命令流(官方示例):Telegram 消息 → **Gateway** 跑 agent → agent 决定调 node tool → Gateway 经 WS `node.invoke` 调 **node** → node 返回结果 → Gateway 回 Telegram。**Node 不跑 Gateway 服务;每台主机默认只跑一个 Gateway**(除非有意跑隔离 profile)。macOS app 的 "node mode" 本质就是一个经 Gateway WS 的 node client。
+
+**Node 配对(信任建立,可复用范式)**:
+- `gateway.nodes.pairing.sshVerify`(默认**开**):不靠网络位置或 SSH 可达性批准;Gateway 经 SSH(BatchMode、strict host keys)**回读设备身份**,仅当连接 keypair 与待批请求**精确设备 key 匹配**才批准——要求该 keypair 已在 operator 控制主机的 operator 账户下。探测限定私有/CGNAT 源地址,共享 trusted-CIDR 准入底线(仅 fresh scopeless `role:node`)。`sshVerify:false` 关闭。
+- `gateway.nodes.pairing.autoApproveCidrs`(默认**禁用**):需显式 CIDR/IP;仅对首次无 scope 的 `role:node` 配对生效;**永不**自动批准 operator/browser/Control UI/WebChat、role/scope 升级、元数据或公钥变更、同机 loopback trusted-proxy 头路径。
+- 设备配对:直连 loopback 自动批准(含窄的 backend/container-local self-connect);Tailnet/LAN 连接(含同机连 tailnet 地址)视为远程仍需批准。
+
+**执行审批语义**:`system.run` 的 exec approvals(allowlist + ask)是 **operator 意图的护栏,不是对抗性多租户隔离**;绑定精确请求上下文 + 尽力的直接本地文件操作数,不语义建模每个 runtime/loader 路径。可信单 operator 默认:`gateway`/`node` 上 host exec 无审批提示(`security="full"`,`ask="off"`)——这是有意的 UX,不是漏洞。**要强隔离 → 按 OS user/host 拆信任边界,跑独立 gateway**。
+
+arXiv:2603.27517 对此的印证:exec allowlist 依赖"命令身份可经词法解析恢复"的**封闭世界假设**,被 shell 行续接、busybox 多路复用、GNU 选项缩写击穿;恶意 skill 经 plugin 渠道在 LLM 上下文内跑两阶段 dropper 绕过 exec pipeline。→ 结论:**不能把 exec allowlist 当作 Node-Host 的安全边界**,真正边界是 sandbox + host isolation + 统一策略。
+
+来源:`docs/gateway/remote.md`、`docs/gateway/security/index.md`(Gateway and node trust / Node execution)、`docs/gateway/protocol.md`(Node connect)、arXiv:2603.27517。
+
+---
+
+#### 6. 路由策略
+
+**Session 作为对话上下文容器**,三类:`main` / `channel` / `group`。`sessionKey` 命名规则:`channel:user:id`、`channel:group:id`。消息路由流:消息到达 → 判 channel 类型(私聊取 sender id / 群聊取 group id / WebChat·CLI 用 main)→ 查/建 session → 投递 agent。
+
+**`messageRouting` 配置**:`defaultSession:"main"`、`channelMapping`(每 channel 的 `userPrefix`/`groupPrefix`)、`groupActivation`(`mode:"mention"`,`mentionPatterns:["@openclaw","openclaw"]`)。群消息默认**要求 @ 提及**才响应。
+
+**会话作用域 `session.dmScope`**(多用户关键):`main`(共享)/ `per-peer` / `per-channel-peer`(推荐)/ `per-account-channel-peer`。`threadBindings`(`enabled/idleHours/maxAgeHours`)、`session.reset`(`mode:"daily"` 等)。`/focus`、`/unfocus`、`/agents`、`/session idle`、`/session max-age` 运行时调优。
+
+**多 agent 路由**:`agents.list[]`(各自 `id`/`workspace`/`skills`)+ `bindings[]`(`{agentId, match:{channel, accountId}}`)。例:WhatsApp personal → agent `home`,WhatsApp biz → agent `work`,workspace 与 session 完全隔离。
+
+**OpenAI 兼容入口**(高杠杆复用面):`/v1/models` 返回 `openclaw`、`openclaw/default`(稳定别名)、`openclaw/<agentId>`;`x-openclaw-model` 头做后端 model 覆盖。同端口、同 operator 认证边界。
+
+来源:`docs/gateway/configuration.md`、`docs/gateway/index.md`、社区 ququ123.top 概念拆解。
+
+---
+
+#### 7. 远程暴露姿势(优先级阶梯)
+
+官方明确的暴露优先级:**loopback + Tailscale Serve > 受限 LAN/Tailnet bind > SSH 隧道(万能兜底)> 公网 Funnel(最后手段)**。铁律:"除非确定需要 bind,否则保持 loopback"。
+
+**Tailscale 集成**(`gateway.tailscale.mode`):
+- `serve`(tailnet-only):Gateway 留在 `127.0.0.1`,`tailscale serve` 提供 HTTPS + 身份头;开 `https://<magicdns>/`。可用 `serviceName:"svc:openclaw"` 走 Tailscale Service(需 tagged node + 控制台批准)。
+- `funnel`(公网 HTTPS):**拒绝启动除非 auth mode 为 `password`**(防裸暴露);仅支持端口 443/8443/10000;需 v1.38.3+、MagicDNS、HTTPS、funnel 节点属性;macOS 需开源版 Tailscale。
+- `bind:"tailnet"`:直接监听 Tailnet IP(无 HTTPS)+ 必带 `127.0.0.1`;无 Tailnet 地址时回落 loopback。
+- `allowTailscale:true` 时 Control UI/WS 可用 `tailscale-user-login` 身份头免 token,经本地 `tailscale whois` 解析 `x-forwarded-for` 校验。**假设 gateway 主机受信**;同机有不可信代码则关掉改用 token/password。HTTP API 端点(`/v1/*` 等)**不走**身份头认证,走正常 HTTP auth。
+- `resetOnExit` 退出时撤销 serve/funnel;`preserveFunnel` 保留外部配置的 funnel。
+
+**SSH 隧道(兜底,可复用范式)**:`ssh -N -L 18789:127.0.0.1:18789 user@gateway-host`,本地连 `ws://127.0.0.1:18789`。macOS 持久化:SSH config `LocalForward 18789 127.0.0.1:18789` + LaunchAgent `ai.openclaw.ssh-tunnel.plist`(`KeepAlive`/`RunAtLoad`)。**关键:SSH 隧道不绕过 gateway auth**,共享密钥模式下客户端仍须发 token/password。`--url` 不回落凭证,须显式 `--token`/`--password`。`gateway.remote.sshHostKeyPolicy:"strict"`(默认严格 host key),`"openssh"` 委托给用户 SSH config。
+
+来源:`docs/gateway/remote.md`、`docs/gateway/tailscale.md`、`docs/gateway/security/index.md`。
+
+---
+
+#### 8. 与 Nginx/反代配合(trusted-proxy 模式)
+
+**核心范式:Gateway 永远 loopback,反代在前终结 TLS + 做身份认证 + 注入身份头**。即便 `gateway.mode:"remote"` 也**不建议**直接 `0.0.0.0` 对公网,正确架构是 Gateway 绑 `127.0.0.1`,Nginx/Caddy 在前接外部 TLS 转发到 loopback。
+
+**`gateway.auth.mode:"trusted-proxy"` 配置**:
+```json5
+{
+  gateway: {
+    trustedProxies: ["10.0.0.1"],        // 反代 IP
+    allowRealIpFallback: false,           // 默认 false;反代给不了 XFF 才开
+    auth: {
+      mode: "trusted-proxy",
+      trustedProxy: {
+        userHeader: "x-forwarded-user",
+        requiredHeaders: ["x-forwarded-proto", "x-forwarded-host"],
+        allowUsers: ["nick@example.com"],
+        allowLoopback: false,             // 同机 loopback 反代需显式开
+        deviceAutoApprove: { enabled: false, scopes: ["operator.read","operator.write","operator.approvals"] },
+      },
+    },
+  },
+}
+```
+
+**欺骗防护(可复用范式,逐层兜底)**:
+1. 默认**拒绝 loopback 源**的 trusted-proxy 请求(`trusted_proxy_loopback_source`),须 `allowLoopback:true` 且 loopback 地址在 `trustedProxies` 内才放行——此检查在头检查**之前**。
+2. 非 loopback 但匹配 Gateway 自身网卡地址 → 拒(`trusted_proxy_local_interface_source`);网卡发现失败也拒。
+3. loopback 请求一旦带 `Forwarded`/`X-Forwarded-*`/`X-Real-IP` → 失去 local-direct 密码回落与 device-identity 资格(但仍以 loopback 失败 trusted-proxy 认证)。
+4. **反代必须"覆写"而非"追加"头**(官方点名 nginx 反例):
+   ```nginx
+   # good
+   proxy_set_header X-Forwarded-For $remote_addr;
+   proxy_set_header X-Real-IP $remote_addr;
+   # bad: 保留/追加客户端可伪造值
+   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+   ```
+5. `trustedProxies` 设了才用 `X-Forwarded-For` 定 client IP;`X-Real-IP` 仅 `allowRealIpFallback:true` 才采信。
+6. trusted-proxy 头**不自动让 node 设备配对受信**——`autoApproveCidrs` 是独立策略,loopback trusted-proxy 头路径永远排除出 node 自动批准(本地调用可伪造头)。
+
+**反代方案对照(官方给 snippet)**:Pomerium(`x-pomerium-claim-email` + `x-pomerium-jwt-assertion` 签名断言)、Caddy + `caddy-security`(`header_up X-Forwarded-User {http.auth.user.email}`)、nginx + oauth2-proxy(`auth_request_set $user $upstream_http_x_auth_request_email`)。
+
+**TLS/HSTS/Origin**:TLS 在反代终结 → HSTS 设在反代;Gateway 自终结 HTTPS → `gateway.http.securityHeaders.strictTransportSecurity` 发 HSTS。非 loopback Control UI 部署默认要求 `gateway.controlUi.allowedOrigins`;`["*"]` 是显式 allow-all,非加固默认。`gateway.remote.tlsFingerprint` pin 远程 `wss://` 证书。Control UI 需 secure context(HTTPS/localhost)生成 device identity;`allowInsecureAuth`/`dangerouslyDisableDeviceAuth` 是 break-glass,`openclaw security audit` 会告警。
+
+来源:`docs/gateway/trusted-proxy-auth.md`、`docs/gateway/security/index.md`(Reverse proxy configuration / HSTS and origin notes)。
+
+---
+
+#### 9. 多端口多实例
+
+**默认每机一个 Gateway**(单 Gateway 可承载多 agent + 多 channel)。需更强隔离或 rescue bot 才跑多实例。**隔离清单(任一共享即冲突)**:`OPENCLAW_CONFIG_PATH`、`OPENCLAW_STATE_DIR`、`agents.defaults.workspace`、`gateway.port`(或 `--port`)、派生 browser/CDP 端口。
+
+**派生端口**(base = `gateway.port`):browser control = base+2(loopback)、Canvas host 同 Gateway HTTP 端口、CDP 端口自动从 base+11 到 base+110。**base 端口至少隔 20** 防派生端口撞。同机多实例需各自 `browser.profiles.<name>.cdpPort`/`cdpUrl`,勿多处 pin 同一 `browser.cdpUrl`(常见 footgun)。
+
+**`--profile` 机制**:`openclaw --profile rescue onboard` / `gateway install --port 19789`。每个 profile 独享 config/state/workspace/service 名/base 端口/Telegram token。LaunchAgent 标签 `ai.openclaw.gateway`(默认)或 `ai.openclaw.<profile>`。`OPENCLAW_ALLOW_MULTI_GATEWAY=1` 跳过 per-config 单例检查,但**state-dir 所有权唯一性仍强制**。
+
+**Rescue bot 范式**:主 bot 默认 profile + 独立 Telegram bot;rescue bot 走 `--profile rescue` + 独立 token + base+≥20 端口,主 bot 挂时仍可经 DM 修复/改配置。`gateway probe` 会警告 `multiple reachable gateway identities`(SSH 隧道/反代 URL/remote URL 指向同一 gateway 算一个 gateway 多传输,不报警)。
+
+来源:`docs/gateway/multiple-gateways.md`、`docs/gateway/index.md`。
+
+---
+
+#### 10. 日志与审计
+
+**双日志面**:Console(TTY-aware,带 `[gateway]`/`[canvas]`/`[tailscale]` 子系统前缀与颜色)+ File(JSONL,`/tmp/openclaw/openclaw-YYYY-MM-DD.log`,按 gateway 主机本地时区;unsafe/unwritable 则回落 `os.tmpdir()/openclaw-<uid>`)。滚动:`logging.maxFileBytes`(默认 100MB),留 `.1`~`.5` 五份。`logging.file`/`logging.level`/`logging.consoleLevel`/`logging.consoleStyle`(pretty/compact/json)。`--verbose` 只抬 console,不抬 file level;file level 由 `logging.level` 独立控制(debug/trace)。
+
+**脱敏(默认开,可复用范式)**:`logging.redactSensitive:"tools"`(默认)/`"off"`;`logging.redactPatterns`(regex 数组)。匹配值掩码保留首 6 + 末 4(≥18 字符),短的变 `***`。默认覆盖常见 key 赋值、CLI flag、JSON 字段、bearer 头、PEM、厂商 token 前缀、支付凭据字段。**有些面永远脱敏**不管 `redactSensitive`:Control UI tool-call 事件、`sessions_history` 工具输出、诊断导出、provider 错误观察、exec 审批命令显示、Gateway WS 协议日志。
+
+**WS 协议日志**:normal 模式只打"有趣"结果(错误 `ok=false`、慢调用 ≥50ms、解析错误);`--verbose` 打全部;`--ws-log auto/compact/full` 控制风格。
+
+**审计账本(metadata-only,可复用范式)**:存 `state/openclaw.sqlite`,**只存身份/顺序/来源/动作/状态/标准化结果码**,**永不存** prompt、消息体、工具参数/结果、附件、文件名、URL、命令输出、原始错误文本。三类记录族:agent.run(默认开)、tool.action(默认开)、message lifecycle(默认 off,`audit.messages: off|direct|all`,改后需重启)。
+
+**隐私模型**:消息行永不存原始平台标识;账户/会话/消息/目标标识导出为**安装级 keyed 假名** `hmac-sha256:v1:<keyId>:<digest>`(HMAC key 域分离、首用生成、同库存储;安装内稳定可关联,不泄露平台 ID)。**这是 correlation 不是 anonymization**——有库读权限者也有 key 可碰撞。key 缺失/损坏时 fail-closed 丢新记录而非轮换 key(防关联断裂)。RPC `audit.activity.list`(需 `operator.read`),CLI `openclaw audit`。
+
+**保留与边界**:查询永不返回 >30 天记录,账本上限 10 万行,启动/每小时/写入时清理。**best-effort 且有界**:"缺行不能证明没发生"(准入前丢弃、无 Gateway 的 CLI 进程、绕过共享持久投递的 plugin 直发路径都不留痕);崩溃歧义外发记为 `unknown`。**不是无损合规归档**——需要合规归档用 OpenTelemetry 或 channel 级工具外接。
+
+来源:`docs/gateway/logging.md`、`docs/gateway/audit.md`。
+
+---
+
+#### 11. 生产加固最佳实践(secure baseline + 部署信任)
+
+**Secure baseline(官方 copy/paste)**:
+```json5
+{
+  gateway: { mode: "local", bind: "loopback", port: 18789,
+    auth: { mode: "token", token: "your-long-random-token" } },
+  channels: { whatsapp: { dmPolicy: "pairing", groups: { "*": { requireMention: true } } } },
+}
+```
+非 owner agent 加 sandbox + deny 危险工具。手机号渠道(WhatsApp/Signal/Telegram)用独立号。
+
+**部署与主机信任**:gateway 主机全盘加密;共享主机用专用 OS user;npm 发布包带 `npm-shrinkwrap.json`(供应链加固 + 发布可复现,非 sandbox);`@openclaw/fs-safe` 做根界文件访问/原子写/解压;文件权限 `~/.openclaw/openclaw.json` 600、`~/.openclaw` 700(`openclaw doctor` 可收紧)。`~/.openclaw/` 下一切当含密:config、`credentials/**`、`state/openclaw.sqlite`(含 MCP OAuth token)、`agents/<id>/agent/openclaw-agent.sqlite`(含 model auth + 会话转录)、`sandboxes/**`。
+
+**workspace `.env` 屏蔽(可复用范式)**:provider 凭证 env(`*_API_KEY`)、`OPENCLAW_*` 整命名空间、`*_ENDPOINT` 路由键一律**禁止**从 workspace `.env` 覆盖——防克隆工作区注入攻击者账号/重定向 connector。仅 gateway 进程环境、`~/.openclaw/.env`、config `env` 块、`env.shellEnv` 可设。
+
+**网络暴露加固**:Tailscale Serve 优于 LAN bind;若必须 LAN bind,防火墙锁紧源 IP allowlist 而非宽端口转发;**永不** `0.0.0.0` 裸暴露。Docker `-p` 端口走 `DOCKER-USER` 链(在 Docker 自身 accept 之前),UFW `after.rules` 显式放行私网/CGNAT + 80/443 后 DROP NEW。Bonjour 默认 `minimal`(只广播 `role`/`gatewayPort`/`transport`,隐去 `cliPath`/`sshPort`);暴露环境用 `minimal` 或 `off`(`OPENCLAW_DISABLE_BONJOUR=1`)。`nmap -sT -p 1-65535 <public-ip> --open` 验证只露有意端口。
+
+**监督与生命周期**:macOS launchd(`ai.openclaw.gateway`,`gateway stop` 用 `launchctl bootout` 保留 KeepAlive 自愈,`--disable` 持久抑制)、Linux systemd user(`loginctl enable-linger` + `XDG_RUNTIME_DIR`)、system unit(`/etc/systemd/system/`)、Windows Task Scheduler。**非法配置退出码 78**,systemd `RestartPreventExitStatus=78` 防反复重拉;launchd/Task Scheduler 无等价机制 → Gateway 自记 rapid unclean boot 历史,重复启动失败后进入 safe mode(控制面仍起供检查,拒绝自动 channel 重启,`channels.start` 可覆盖)。`openclaw doctor --fix` 修服务配置漂移;系统级 unit 存在时拒绝再装用户级(`OPENCLAW_SERVICE_REPAIR_POLICY=external`)。
+
+**事故响应四步(可复用范式)**:① Contain(停 app/进程,`gateway.bind:"loopback"` 或关 Funnel/Serve,DM/group 改 `disabled`/require mention,移 `"*"` allow-all)→ ② Rotate(假设泄露即被攻陷:轮 `gateway.auth.token`/`OPENCLAW_GATEWAY_PASSWORD` 并重启、轮 `gateway.remote.*`、轮 provider/channel 凭证)→ ③ Audit(查 `/tmp/openclaw/openclaw-YYYY-MM-DD.log` + `agents/<id>/sessions/*.jsonl` + 近期 `gateway.bind`/`auth`/DM/`tools.elevated`/plugin 变更 + `openclaw security audit --deep`)→ ④ Collect(时间戳/OS/version、脱敏后转录与日志尾、攻击者发送内容与 agent 行为、是否暴露超 loopback)。凭证轮换 checklist:`openclaw models auth` 不撤销 provider 端,需到 provider dashboard 吊销。
+
+**`openclaw security audit` / `--deep`**:扫描 insecure/dangerous flag(每启用一个出一条 `config.insecure_or_dangerous_flags` finding),如 `controlUi.allowInsecureAuth`、`dangerouslyDisableDeviceAuth`、`browser.ssrfPolicy.dangerouslyAllowPrivateNetwork`、`sandbox.docker.dangerouslyAllow*`、`channels.*.dangerouslyAllowNameMatching` 等;suppressions 即使匹配也留 `security.audit.suppressions.active` 记录。
+
+来源:`docs/gateway/security/index.md`(Hardened baseline / Deployment and host trust / Secrets on disk / Incident response)、`docs/gateway/index.md`(Supervision)。
+
+---
+
+#### 12. 可复用范式提炼(跨框架通用)
+
+1. **统一策略边界 > 逐层信任**:arXiv:2603.27517 证明逐层 enforcement 对跨层组合攻击脆弱。把认证/路由/执行策略集中到 Gateway 一处,Node 只做受信执行。
+2. **默认 loopback + fail-closed 认证**:即使本地也发 token;非 loopback 无 auth 直接拒;明文 ws 仅限私有网。
+3. **challenge→connect→hello-ok 握手 + 作用域闭合集**:首帧必须 connect,pre-auth 64KiB 上限;共享密钥=全权 operator(不可收窄),身份感知模式才按请求 scope 收窄。
+4. **暴力破解限流分桶**:按 IP+凭证作用域;浏览器 Origin 路径**不豁免 loopback** 且按 Origin 分桶(防本地恶意页面)。
+5. **远程暴露阶梯**:loopback+Tailscale Serve > LAN bind+防火墙 > SSH 隧道 > Funnel(强制密码)。SSH 隧道不绕过认证。
+6. **反代"覆写非追加"头 + 逐层欺骗防护**:拒绝 loopback/本机网卡源;带转发头即失 local-direct 资格;trusted-proxy 头不传染 node 配对。
+7. **Node 配对默认 `sshVerify` 开、`autoApproveCidrs` 禁**:靠 key 精确匹配而非网络位置;exec allowlist 是意图护栏不是隔离边界。
+8. **审计 metadata-only + HMAC 假名 + 有界 best-effort**:不存内容,缺行不证伪,需合规归档外接 OTel。
+9. **配置严格校验 + 热重载分级 + 乐观并发 patch**:未知键拒启动;`gateway.*` 改动重启、其余热应用;`baseHash`+`replacePaths` 防并发误删。
+10. **多实例四件套隔离**:config/state/workspace/port(+派生端口隔 20);rescue bot 做故障通道。
+
+---
+
+#### 附:Gateway 常见失败签名(排障速查)
+
+| 签名 | 含义 |
+|---|---|
+| `refusing to bind gateway ... without auth` | 非 loopback 绑定但无有效 auth 路径 |
+| `another gateway instance is already listening` / `EADDRINUSE` | 端口冲突 |
+| `Gateway start blocked: set gateway.mode=local` | config 设了 remote 或 `gateway.mode` 丢失 |
+| `unauthorized` during connect | 客户端与 gateway 凭证不匹配 |
+| `AUTH_RATE_LIMITED` | 触发认证失败限流锁(等 `retryAfterMs`) |
+| `MISSING_SCOPE` | 持有 scope 不足(返回 `requiredScopes` 全集) |
+| 1008 | WebSocket token 认证失败 |
+| 退出码 78 | 配置非法,Gateway 拒启动(systemd 不重拉) |
+
+---
+
+## 十三、长程任务
+
+> 信源以官方文档(docs.openclaw.ai)为主,辅以社区架构拆解与 GitHub issue。注意:awesome-openclaw 列表与 arxiv 2603.27517 因 Tavily 额度耗尽未能直取,相关结论基于已获官方文档与 issue 事实深化,不臆造。
+
+---
+
+#### 1. 长程任务如何持久化与续接
+
+**真相源是单一 Gateway 进程**。OpenClaw 围绕"一个 Gateway 进程拥有全部 session 状态"设计,状态落 `$OPENCLAW_STATE_DIR`(默认 `~/.openclaw/`),三类载体各司其职:
+
+- **`sessions.json`** — session 索引/真相源,追踪 compaction 计数、pending 状态等元数据。重启后 `sessions.json` 是判断"哪些 session 有未完成工作"的依据。
+- **`.jsonl` transcript** — 结构化对话流水,跨重启持久化。compaction 产生的 summary entry 也写回 `.jsonl`,所以压缩后的上下文同样跨重启存活。日常 reset(默认凌晨 4 点)时旧 transcript 被重命名为 `.jsonl.reset.<ts>` 归档而非删除。
+- **markdown workspace 文件**(`MEMORY.md` / `memory/YYYY-MM-DD.md` / `USER.md` / `AGENTS.md`)— agent 主动写入的持久事实,是"上下文之外的真正记忆"。
+
+**续接分两种语义**:
+- **同 session 续接**:非 isolated 的 session 跨小时/跨天持续累积,Gateway 常驻 + `.jsonl` 落盘让它"关掉窗口也不丢"(前提是 Gateway 进程在)。
+- **跨 session 续接**:cron 默认 `sessionTarget: isolated`,每次 spin up 独立 session;要跨会话续长任务,官方/社区共识是**外挂 task queue**(SQLite / Notion / 纯文本文件)+ cron 定期检查队列 + `openclaw tasks` ledger 记录。
+
+**关键澄清(社区高频误区)**:关闭 chat 窗口 ≠ 任务继续。Session 仅在连接存活时有工作上下文,关窗即丢。真正 7×24 后台自动化必须靠 cron scheduler + 持久化 task queue,而非依赖交互式 session。来源:[Medium 七条教训](https://medium.com/@tentenco/seven-hard-won-lessons-for-running-openclaw-without-burning-out-65e3d97dda3d)、[官方 tasks 文档](https://docs.openclaw.ai/automation/tasks)。
+
+**Task Flow(持久任务流)**:`openclaw tasks flow list/show/cancel` 在 task ledger 之下提供更细的 durable 状态机(见 §6),用于多步可恢复工作流——这是 OpenClaw 把"长程任务"从"一个长 session"升级为"跨重启的有状态流程"的关键机制。
+
+---
+
+#### 2. Compaction 在长任务中的作用与代价
+
+**作用:让单 session 突破上下文窗口续命**。当 session 接近模型上下文上限(如 Claude 200K)或模型返回 `context_length_exceeded` 时,触发两步序列([官方 compaction 文档](https://docs.openclaw.ai/concepts/compaction)、[session-management 深度](https://docs.openclaw.ai/reference/session-management-compaction)):
+
+1. **Pre-compaction memory flush(已实现)** — 在 soft threshold(低于运行时 compaction 阈值)触发一次 **silent agentic turn**:用 `NO_REPLY`/`no_reply` 静默 token 提示 agent 把关键事实写到 `memory/YYYY-MM-DD.md`,再压缩。每个 compaction 周期只跑一次(在 `sessions.json` 追踪),只对 embedded session 运行(CLI backend 跳过),read-only workspace 跳过。可用 `memoryFlush.model`(如 `ollama/qwen3:8b`)指定本地模型做 housekeeping,**不继承 active session 的 fallback chain**(避免本地清理活儿静默回退到付费模型)。
+2. **Compaction 本身** — 全对话历史总结成 compact summary entry,保留最近消息逐字,summary 写回 `.jsonl` 跨重启持久化。新版本不再写 `.checkpoint.<id>.jsonl`(legacy 仍可用,由 session cleanup 修剪)。支持可插拔 compaction provider,`mode: "safeguard"` 在 provider 失败/空结果时回退内置 LLM 摘要。
+
+**Compaction ≠ Pruning**:compaction 总结整段对话并落盘 JSONL;pruning 只在内存中按 request 裁剪工具输出,不持久化。两者互补。
+
+**代价(必须知道的失败模式)**:
+- **flush 是"提示写"不是"保证写"**。模型在时间压力下自行决定写什么,对上下文里未来可能重要的内容无完整视图——这是 mem0 拆解点名的核心缺陷([mem0 blog](https://mem0.ai/blog/openclaw-memory-management-live-data-compaction-and-best-practices))。
+- **审计不可靠**:GitHub issue #16984 记录 flush 触发但 compaction counter 不注册,安全网跑了却不留审计痕迹。
+- **渐进式上下文流失**:长期运行的 session 经多次 compaction 后,关键决策/偏好会缓慢损耗,agent 表现退化([Medium 七条教训](https://medium.com/@tentenco/seven-hard-won-lessons-for-running-openclaw-without-burning-out-65e3d97dda3d))。
+- **reset 路径漏掉 flush**:daily reset(凌晨 4 点)和 `/new`、`/reset` 目前**不触发** memory flush 或 compaction summary,旧上下文被静默丢弃(issue [#56072](https://github.com/openclaw/openclaw/issues/56072)、[#45608](https://github.com/openclaw/openclaw/issues/45608),后者 closed as not planned)。
+
+**工程对策**:把关键决策/成功配置**主动写进 workspace 文件**(`USER.md`/`AGENTS.md`/`HEARTBEAT.md`/`MEMORY.md`),让记忆脱离上下文、不依赖 compaction 是否完整;`/compact Focus on <topic>` 手动引导摘要重点;`notifyUser: true` 让压缩可见。
+
+---
+
+#### 3. Lane Queue 如何保证长任务有序不并发
+
+**单进程 + lane-aware FIFO**,实现在 `src/process/command-queue.ts`([LumaDock 并发指南](https://lumadock.com/tutorials/openclaw-concurrency-retry-control)、[Saulius 架构博客](https://saulius.io/blog/openclaw-autonomous-ai-agent-framework-heartbeat-monitoring))。Gateway 是**单 Node.js 进程跑 async promises,无线程/无后台 worker**,并发由队列而非并行进程管理。每个 incoming task **入队两次**才执行(双重入队保证 session 级与全局级都受控)。
+
+**两级 lane**:
+- **Session Lane(每会话一个)** — 同一会话内消息严格 FIFO。用户在 agent 工作时连发 3 条,它们排队串行处理,杜绝会话内竞态。这是"长任务有序"的最直接保证:一个 session 的长 turn 不完成,该 session 下一轮就不会开始。
+- **Global Lane(系统级)** — 控制全局并发,默认 main lane 4 并发、subagent lane 8 并发,防资源耗尽的同时允许跨会话并行。配置项 `agents.defaults.maxConcurrent`、`cron.maxConcurrent`。
+
+**长任务的有序性落地**:同一 session 的长 turn 串行(Session Lane),跨 session 的长任务并行(Global Lane 上限内),cron lane **总是 defer heartbeat**(即便无 flag),避免本地模型同时跑 cron 和 heartbeat prompt 互相挤兑。
+
+**队列健康与恢复**:
+- 监控:`OPENCLAW_LOG_LEVEL=verbose openclaw gateway run`,等待超 ~2s 的 run 打 `[queue] session:abc123 queued for 4230ms`;持续出现 = lane 饱和。
+- 死锁恢复:**重启 Gateway**,重启时用 **generation counter** 失效旧条目,干净排空 backlog——这是队列死锁的**预期恢复路径**。
+- 状态分类:`processing` / `session.long_running` / `session.stalled` / `session.stuck`([官方 queue 文档](https://docs.openclaw.ai/concepts/queue))。Per-session 可 `/queue <steer|followup|collect|interrupt>` 覆盖排队策略,`/queue collect debounce:0.5s cap:25 drop:summarize`。
+- **已知缺口**:issue [#71127](https://github.com/openclaw/openclaw/issues/71127) — stuck session 被检测并 `WARN` 日志,但 `logSessionStuck()` 只 warn+emit event,**不自愈**(无 abort/cancel/drain),唯一恢复是外部 `launchctl kickstart -k ai.openclaw.gateway`;[#87310](https://github.com/openclaw/openclaw/issues/87310) — stale native tool activity(bash/rg)可在 recovery/reset 后存活,反复触发 `blocked_tool_call` 阻塞未来 turn。
+
+---
+
+#### 4. HEARTBEAT cron 如何驱动
+
+**HEARTBEAT.md 是普通 workspace 文件**,每次 scheduled run 加载进 prompt,**token 成本随文件长度线性增长**(保持短)。心跳本质是**完整 agent turn**(不是轻量 ping),间隔短则烧 token 多([官方 heartbeat 文档](https://docs.openclaw.ai/gateway/heartbeat))。
+
+**驱动方式**:
+- **定时**:每隔 ~N 分钟主 session 被 ping,轮询 email/calendar/weather 等,用 `heartbeat-state.json` 跟踪状态避免冗余检查。
+- **手动唤醒**:`openclaw system event`,或 `openclaw system event --text "..." --mode now` 立即触发。
+- **push-based 完成唤醒**:session-queued task 完成时**立即触发 heartbeat wake**,不必等下次 tick——这是"启动一次 detached work,运行时完成时唤醒你"的核心。
+
+**可演化**:可在普通 chat 里让 agent 更新 HEARTBEAT.md,或在 prompt 加 "If the checklist becomes stale, update HEARTBEAT.md" 让其自我维护。**禁止放 secrets**(API key/电话/token),它进 prompt context。
+
+**成本控制(社区血泪)**:
+- `isolatedSession: true` + `lightContext: true` + `model: ollama/llama3.2:1b` 把心跳路由到免费本地模型;`target: "none"` 关推送。
+- 分层模型:Haiku/Flash/local Ollama 跑心跳/cron/status ping,Sonnet/Opus 做 fallback 复杂推理。社区报告单请求 token 从 20K–40K 降到 ~1500([Medium](https://medium.com/@tentenco/seven-hard-won-lessons-for-running-openclaw-without-burning-out-65e3d97dda3d))。
+- **cron token 静默燃烧陷阱**:上次 run 的大输出会被下次 run 继承为 context。对每个 cron job 设硬 `requests_limit` + 便宜任务路由便宜模型,月费降 ~5x([Reddit 24/7 setup](https://www.reddit.com/r/openclaw/comments/1rdlcot/))。
+
+**heartbeat vs cron 分工**:heartbeat = 灵活批处理(轮询多源、状态机式检查);cron = 精确时序的独立任务(晨报/日报/一次性提醒)。
+
+**已知坑(heartbeat.model bleed)**:心跳切到小本地模型(如 32k 窗口的 Ollama)后会"bleed"留下,导致下一个主 session turn context overflow;OpenClaw 的 recovery message 会指出 heartbeat model bleed 为疑似原因并给修复建议。
+
+---
+
+#### 5. 故障恢复:进程崩了任务怎么办
+
+这是 OpenClaw 长程任务设计最扎实的部分,见 [官方 restart-recovery 文档](https://docs.openclaw.ai/gateway/restart-recovery)。
+
+**优雅重启先排空(drain first)**:`openclaw gateway restart`(或需重启的 config 变更/更新)**不立即杀 in-flight work**。Gateway 停止接新工作,等 active agent turn 与 background task 完成,最多等 **drain budget(默认 5 分钟)**。大多数重启**不打断任何东西**。只有 drain budget 内完不成、或被 forced restart/crash 中断的工作才被 abort——**此前每个受影响 session 被标记为 recovery**。
+
+**三种互补机制**检测"turn 未完成"的 session(官方未完全公开细节,但确认存在三路并行检测)。
+
+**自动续接**:
+- 主会话走 `main-session-restart-recovery` 子系统自动 resume。
+- subagent 走 `subagent-interrupted-resume` 自动续。
+- 重启时 **generation counter** 失效旧队列条目,干净排空 backlog(同 §3)。
+
+**崩溃环路保护(Crash-loop breaker)**:5 分钟内 3 次 unclean boot 触发 breaker,下次 boot 抑制 auto-start side services,**防止崩溃网关自我放大**;unclean-boot 窗口排空后自动恢复。
+
+**可观测性**:Prometheus 指标 `openclaw_session_recovery_total`、`openclaw_session_recovery_age_seconds`;recovery 决策日志在 `main-session-restart-recovery` / `subagent-interrupted-resume` 子系统。
+
+**task 级故障语义**:`lost` 状态 = 运行时在 **5 分钟宽限期**后失去权威后端状态(§6)。`openclaw tasks audit` / `maintenance` 做审计与修剪(maintenance 修剪 `cron:<jobId>:run:<uuid>` 超 7 天的 session registry 行,保留正在运行的 cron job)。
+
+**已知恢复缺口(重要)**:
+- [issue #91613](https://github.com/openclaw/openclaw/issues/91613):**reply-queue 状态重启不 flush**,单独存储且跨进程重启存活,重启后旧 queued reply 可能排到错误 Matrix room。`sessions.json` 显示 0 pending 也查不出这种 pending outbound message。`sessionTarget: isolated` 不管用(它管 per-run context,不管 outbound queue 状态)。
+- [issue #87310](https://github.com/openclaw/openclaw/issues/87310):recovery abort/drain 了 embedded run,但 stale native tool activity 由**独立状态路径**追踪,可能不清除,持续阻塞。
+- [issue #71127](https://github.com/openclaw/openclaw/issues/71127):stuck session 检测后无自愈,需外部进程重启。
+
+**结论**:优雅重启 + 自动 resume + generation counter 排空是主路径,可靠;但 reply-queue 与 native tool activity 两条**旁路状态**的清理仍有 bug,长程任务上线前需把"强制重启后的清理"纳入 runbook(`openclaw doctor --fix` + `tasks maintenance --apply` + 必要时 `launchctl kickstart`)。
+
+---
+
+#### 6. 任务状态机
+
+**Task 状态机**([官方 tasks 文档](https://docs.openclaw.ai/automation/tasks)、[CLI](https://docs.openclaw.ai/cli/tasks)):
+
+```
+queued -> running -> terminal
+```
+
+终态七态:`succeeded` / `failed` / `timed_out` / `cancelled` / `lost`。
+
+| 状态 | 含义 |
+|---|---|
+| `queued` | 已创建,等 agent 开始 |
+| `running` | agent turn 活跃执行中 |
+| `succeeded` | 成功完成 |
+| `failed` | 出错完成 |
+| `timed_out` | 超配置超时 |
+| `cancelled` | 操作员 `openclaw tasks cancel` 或 run 被中止 |
+| `lost` | 运行时 5 分钟宽限期后失去权威后端状态 |
+
+转换**自动发生**(agent run lifecycle 事件 start/end/error 驱动),不需手动管理。
+
+**哪些 run 创建 task**:cron 执行 / ACP spawn / subagent spawn / gateway-dispatched CLI agent 命令。**heartbeat turn 和普通交互 chat 不创建 task**——task 是"detached 工作的账本",不是调度器本身。
+
+**通知策略**:`done_only`(默认,仅终态)/ `state_changes`(每次状态转换+进度)/ `silent`(cron/CLI/media 默认)。可运行中改:`openclaw tasks notify <lookup> state_changes`。
+
+**Task Flow(更细的 durable 状态机)**:`openclaw tasks flow list --status` 接受 `queued` / `running` / `waiting` / `blocked` / `succeeded` / `failed` / `cancelled` / `lost`。多了 `waiting`/`blocked` 两个非终态——这是**多步长程工作流**的状态机,落 task ledger,跨重启可 inspect/cancel。这是 OpenClaw 把长程任务从"单 session 续命"升级为"显式状态机驱动"的标志。
+
+**`/status` 与 `session_status` 工具用 cleanup-aware 快照**:活跃 task 优先、过期行隐藏、终态 task 只在最近 5 分钟窗口出现,无活跃工作时聚焦失败——让状态卡只显示"当前重要的"。
+
+---
+
+#### 7. 与 Claude Code 单会话短任务对比
+
+| 维度 | Claude Code | OpenClaw |
+|---|---|---|
+| 定位 | 交互式编码助手,人在回路 | 自治 agent 操作系统,7×24 |
+| 进程模型 | 按需启动的 CLI 会话 | 常驻 Gateway 单进程(launchd/systemd 托管) |
+| 会话生命周期 | 单会话、短任务,状态在连接存活期内 | 有状态 session 跨小时/跨天,`.jsonl`+`sessions.json` 落盘 |
+| 上下文续命 | 接近窗口即需手动 `/clear` 或新会话 | compaction 自动续命,跨重启持久化 |
+| 并发 | 单会话串行,无跨会话调度 | Lane Queue(session FIFO + 全局并发上限) |
+| 后台任务 | 无原生后台/cron | cron + heartbeat + task ledger + Task Flow 状态机 |
+| 故障恢复 | 进程崩=会话丢,靠 git/文件恢复 | graceful drain + 自动 resume + generation counter + crash-loop breaker |
+| 驱动方式 | 用户输入驱动 | 用户输入 + cron 时序 + heartbeat 轮询 + task 完成唤醒(push) |
+
+**本质差异**:Claude Code 的"任务"是一次交互式编码请求,完成即止;OpenClaw 的"任务"是**有状态、可调度、可恢复的工作单元**,由独立运行时托管,脱离"连接是否打开"。OpenClaw 本质是在 Pi Agent 框架执行核之上,加了 Gateway 多通道编排 + Lane 安全并发 + heartbeat 主动监控 + 持久化 task ledger,把短任务运行时升级成长程任务运行时。
+
+---
+
+#### 8. 设计可恢复长程任务的最佳实践(可复用范式)
+
+**A. 持久化优先于上下文**
+- 关键状态**主动写 workspace 文件**(`MEMORY.md`/`USER.md`/`AGENTS.md`/`HEARTBEAT.md`),不依赖 session 上下文内存。compaction 会渐进丢上下文,workspace 文件不会。
+- Daily log 即使"没发现"也写时间戳条目——"没找到的模式"与"找到了"同样有价值,用于调信号阈值([Reddit 24/7 setup](https://www.reddit.com/r/openclaw/comments/1rdlcot/))。
+- `MEMORY.md` 保持精炼 curated,不当 append-only log(mem0 拆解强调)。
+
+**B. 分层模型路由**
+- 便宜模型(Haiku/Flash/Ollama 本地)跑 heartbeat/cron/status ping;Sonnet/Opus 做 fallback 复杂推理。
+- compaction 的 memoryFlush 用本地模型(`memoryFlush.model`),不继承 fallback chain。
+- 每 cron job 设硬 `requests_limit`,防上次大输出被下次继承静默烧 token。
+
+**C. 跨会话续接用外挂队列**
+- cron `sessionTarget: isolated` 每次独立 session;跨会话续长任务用 SQLite/Notion/文本文件 task queue + cron 定期检查。
+- 多步可恢复工作流用 Task Flow 状态机(`waiting`/`blocked` 显式表达),落 ledger 跨重启。
+
+**D. 隔离重操作**
+- 长报告/大数据处理隔离到独立 process/workflow,不阻塞实时交互([Hostinger 优化指南](https://www.hostinger.com/tutorials/how-to-optimize-openclaw))。
+
+**E. 监控先于 outage**
+- verbose log 看 `[queue] queued for Xms`;`/status` 看活跃/失败/issue;`openclaw tasks audit` 定期审计。
+- Prometheus 指标 `openclaw_session_recovery_total` / `_age_seconds` 接告警。
+
+**F. 重启用优雅路径**
+- `openclaw gateway restart`(drain 5 分钟)优于 `kill -9`;队列死锁走重启 + generation counter 排空。
+- 把"强制重启后清理"写进 runbook:`openclaw doctor --fix` + `tasks maintenance --apply` + 必要时 `launchctl kickstart -k ai.openclaw.gateway`。
+
+**G. 接受并补偿 compaction 损耗**
+- compaction 是"续命"不是"无损",flush 是"提示写"不是"保证写"。补偿方式:关键决策即时写 workspace 文件;`/compact Focus on <topic>` 引导摘要;`notifyUser: true` 让压缩可见。
+
+**H. 防止状态旁路泄漏**
+- 警惕 reply-queue(issue #91613)与 native tool activity(issue #87310)两条旁路状态在 recovery 后不清除的已知 bug;多通道(尤其 Matrix)部署考虑 `sessionScope: per-room` 做配置级缓解。
+
+**一句话范式**:长程任务 = **持久化(workspace 文件 + .jsonl + task ledger) × 调度(cron/heartbeat/push 唤醒) × 安全并发(Lane Queue) × 可恢复(graceful drain + generation counter + crash-loop breaker + Task Flow 状态机)**,其中 compaction 是上下文续命手段而非记忆真相源,真相源永远是落盘的 workspace 文件与 task ledger。
+
+---
+
+## 十四、主动推送
+
+### 一、范式跃迁:foreground agent → always-on background agent
+
+OpenClaw 把 AI agent 从"你 prompt 它才 act"的**前台被动**(foreground / reactive)推进到"无人触发也主动做事"的**常驻后台**(always-on background / proactive)。社区将其拆成四级渐进形态,这是理解主动推送的总框架:
+
+| 级别 | 行为 | 触发 | 机制 |
+|---|---|---|---|
+| Reactive | 你问它答 | 用户消息 | 标准 chat |
+| Scheduled | 定时执行 | 时间到 | Gateway cron |
+| Initiating | 主动浮现 | 周期巡检发现 | Heartbeat 监控 |
+| Self-directing | 自主识别改进并构建 | 自我设定目标 | Self-improvement loop |
+
+关键认知:**"proactive" 并非 agent 自发产生意识,而是被显式调度器唤醒**。Reddit 上一个常见误区是给 agent 写"你是完全自主的、永远不要 idle"的 SOUL.md 然后期望它自己干活——结果是空转。社区共识回复:"OpenClaw agents don't self-initiate. They aren't magic, they must be explicitly triggered. If they're idle or unproductive, it's almost always a configuration issue (scheduling, triggers, or workflows)." 也就是说,主动性的工程本质是 **cron + heartbeat + webhook + 条件监听** 这一套"唤醒基础设施",而非 prompt 里的形容词。Heartbeat 文件为空 = 不主动,这是最常见的配置坑。
+
+范式跃迁的落地形态:OpenClaw 作为 `systemd`(Linux)/`LaunchAgent`(macOS)常驻守护进程,成为一个"会自己醒来的数字代理劳动力"——夜里人睡觉时它监控仪表盘、triage 告警、执行 cron,把行政劳动的单位经济学彻底改写。这从"员工要去访问的目的地"变成了"后台持续运转的隐形基础设施"。
+
+### 二、HEARTBEAT 如何驱动主动巡检
+
+Heartbeat 是 OpenClaw 最具辨识度的特性,本质是**无用户输入的周期性 agent turn**。
+
+**运行机制**:Gateway 内的 `HeartbeatRunner` 每隔 `every`(默认 30min;Anthropic OAuth 模式 1h)触发一次,向 agent 注入系统提示"Read HEARTBEAT.md if it exists. Follow it strictly."。agent 读文件、逐条评估检查项,然后二选一:
+1. 无事可做 → 回复 `HEARTBEAT_OK`,Gateway **静默吞掉**,你手机不响;
+2. 有事需关注 → 通过配置的 channel(Telegram/Slack 等)发真实消息。
+
+**HEARTBEAT.md 用自然语言而非 cron 语法**写检查清单,如"Every Monday at 9 AM, summarize my unread emails"或"Every 2 hours, check for new security advisories"。Heartbeat 命中到点任务时自主执行。
+
+**关键设计:heartbeat 跑在与正常对话相同的 agent context 内**。这意味着 agent 记得自己查过什么、能避免重复通知、能基于历史结果排优先级——例如每 10 分钟查一次收件箱,但同一封紧急邮件只通知一次,而非每次巡检都轰炸。这是"降噪"能成立的结构性前提。
+
+**核心配置项**(`agents.defaults.heartbeat`):
+- `every`: "30m"(0m 禁用;支持 10m/1h/2h,可全局或 per-agent)
+- `model`: 可覆盖为更便宜模型(如 Haiku),巡检不需要最强模型
+- `lightContext: true`: 只保留 HEARTBEAT.md,不带 workspace 其他 bootstrap 文件
+- `isolatedSession: true`: 每次心跳在全新 session 跑(无对话历史)——配合 `lightContext` 可**省约 40x token**
+- `skipWhenBusy: true`: 等待该 agent 的 subagent/nested lane 空闲再跑
+- `includeReasoning: false`(默认): 心跳只交付最终 answer;开启则额外发 `Thinking` 消息(透明但会泄漏内部细节,群聊慎用)
+- `target`/`to`/`accountId`: 控制通知投递通道
+
+**手动唤醒**:`openclaw system event --text "..." --mode now` 可入队系统事件并立即触发心跳;`openclaw system heartbeat last/enable/disable` 管理心跳状态。这把"被动巡检"补上了"按需触发"的能力。
+
+### 三、推送触发模式:定时 / 事件 / 阈值
+
+OpenClaw 的主动推送不是一个机制,而是**四种触发源的统一交付管线**:
+
+#### 1. 定时(Cron)— 精确时间,隔离执行
+Gateway 内置 cron 调度器,job 持久化到 `~/.openclaw/cron/jobs.json`,重启不丢。支持 one-shot reminder、recurring 表达式、inbound webhook trigger。输出可投递到 chat channel、webhook 或不投递。重试默认 3 次,backoff `30s/60s/5m`,覆盖 rate_limit/overloaded/network/timeout/server_error 五类瞬态错误。Cron 执行**总是创建 background task**(heartbeat turn 和普通 chat 不创建)。
+
+#### 2. 周期巡检(Heartbeat)— 主 session 的环境感知
+轻量、复用主对话上下文,适合"每 30 分钟查收件箱""保持对紧急项的感知"。
+
+#### 3. 事件触发(Webhook / Gmail Pub/Sub / Gateway hooks)
+外部系统经 HTTP 触发 agent。两个端点:`/hooks/wake`(轻推主 session)和 `/hooks/agent`(跑隔离任务)。webhook 用 `webhookToken` 做 `Authorization: Bearer` 校验,GitHub webhook 走 HMAC-SHA256 签名验签。Gmail Pub/Sub 用于新邮件自动处理。
+
+#### 4. 阈值/条件(Condition watchers)— 事件触发器的高级形态
+event trigger 给 `every` 或 `cron` 调度挂一个**headless 条件脚本**,到点时先评估脚本,仅当返回 `fire: true` 才跑正常 payload。这就是"阈值触发"的工程实现——不是每次到点都推送,而是条件满足才推。
+
+#### 唤醒优先级与合并
+wake reason 有优先级:**RETRY(0,最高,失败心跳退避重试)> INTERVAL(1,定时 tick)> DEFAULT(2,普通请求)> ACTION(3,手动 wake/exec event/hook)**。250ms 内的多个 wake 请求**合并为一次执行**,防止风暴。
+
+#### Cron vs Heartbeat 决策表
+| 需求 | 用 |
+|---|---|
+| 每 30 分钟查收件箱 | Heartbeat(主 session 周期感知) |
+| 每天 9 点发报告 | Cron isolated(定时+投递) |
+| 20 分钟后提醒我 | Cron at(one-shot timer) |
+| 每 4 小时健康检查 | Cron isolated(重任务,全新 context) |
+| 保持对紧急项感知 | Heartbeat(轻量,主 context) |
+| 夜间处理 webhook 数据 | Cron isolated(批处理) |
+
+#### 后台任务投递路径
+task 终态:`queued -> running -> terminal`(succeeded/failed/timed_out/cancelled/lost)。终态后通知有两条路径:**直接投递**(task 有 `requesterOrigin` channel 时,完成消息直达 Discord/Slack/Telegram);**session 排队投递**(直接投递失败或无 origin 时,更新作为 system event 排入 requester session,在下次心跳浮现)。这条"兜底路径"保证了即使即时推送失败,信息也不会丢——会在下一次心跳浮出。
+
+### 四、降噪:如何避免主动推送变成打扰
+
+主动推送最大的失败模式是**变成每 30 分钟一次的昂贵噪音**。OpenClaw 的降噪是多层叠加的:
+
+**1. HEARTBEAT_OK 静默协议(核心)**:agent 回复 `HEARTBEAT_OK` 时 Gateway 吞掉不发。判定规则严格:`HEARTBEAT_OK` 必须出现在回复**开头或结尾**,且其余文本 ≤ `ackMaxChars`(默认 300)。若 agent 把 `HEARTBEAT_OK` 埋在长消息中间,会被当成普通消息投递。**系统奖励沉默**。
+
+**2. HEARTBEAT.md 必须写"沉默准则"(silence criteria)**:社区反复强调——没有沉默准则的 heartbeat 要么刷屏要么哑火。例如明确写"只在磁盘 > 85% 或新 CVE 时通知我"。
+
+**3. 通道级开关**:`showOk`(隐藏 OK 确认)/`showAlerts`(显示告警)/`useIndicator`(发 indicator 事件),优先级 per-account > per-channel > defaults。**三者全 false 时 Gateway 跳过整次心跳(不调模型)**——零成本静默。
+
+**4. 持久记忆去重**:结合向量记忆(Milvus/Zilliz 或内置 SQLite+embedding),心跳可检索"该告警是否已被确认""上周是否处理过同类情况",避免重复通知。这是从"无状态报警"到"有状态助理"的分水岭。
+
+**5. 告警工程化**(腾讯云架构拆解总结的生产经验):**按 incident key 去重 + 强制 cool-down 窗口**防 alert storm;**幂等**(同触发不产生重复副作用);**背压**(下游慢时限流排队);**有界重试**(封顶尝试次数,失败转结构化事件);**单一系统记录**(action 路由到唯一 ticketing/CRM/calendar,避免归属歧义)。
+
+**6. includeReasoning 默认关**:群聊尤其要关,否则会泄漏 agent 内部推理细节。
+
+**7. 成本降噪**:`lightContext + isolatedSession` 砍 ~40x token;心跳用便宜模型;从 1-2 个检查项起步逐步加(膨胀的 heartbeat 文件烧 token 却很少提升效果)。**不要把 secret 放进 HEARTBEAT.md**——它会进 prompt context。
+
+issue #66343 还在推动 `suppressSystemMessages` 选项,把"Read HEARTBEAT.md..."这类系统消息也从 chat 隐藏,进一步降噪。
+
+### 五、主动行为的边界与安全:自主做事的风险
+
+**这是主动推送最危险的一环**:always-on + 自主行动 + 广泛系统权限 = 一个错误的权限设置就把"有用的自动化"变成安全风险。已披露的真实事故:**agent 试图"修复"认证问题时删除了 OAuth credentials**(issue #6823 的触发案例);有道德黑客 < 2 小时找到一键账号接管导致 RCE;Snyk 发现 **7% 的 OpenClaw skill 把 API key/密码/信用卡号以明文传给 LLM**;HiddenLayer 研究指出 OpenClaw **几乎没有 guardrail**,spotlighting 防御(用 `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` 标记)只覆盖 webhook/Gmail/web_fetch 三类外部内容,且可用近似控制序列轻易绕过;shell 命令工具天然支持数据外泄/破坏(挖矿、删文件)。
+
+#### 核心安全原则
+**"模型智能有用但不充分;可信运行要求在模型之外做策略强制。"**(TrustedClaw 论文)—— 不能靠 prompt engineering 兜底安全,因为 prompt 是软约束,会被 prompt injection 绕过。硬约束必须来自工具策略、exec 审批、沙箱、channel allowlist。
+
+#### 三级风险审批(生产部署推荐)
+- **Low**:自动执行 + 日志(读文件、搜文档)
+- **Medium**:限速 + 审计(写文件、调外部 API)
+- **High**:**需人工审批**(破坏性操作、访问凭证、提权)
+- 风险分类可基于规则(工具名/参数 pattern)或 ML(用历史 trace 预测 blast radius);审批集成 Slack/PagerDuty/Web UI,生成不可篡改审计链。
+
+#### Guardrails exec 配置范式(issue #6823)
+```
+guardrails.exec:
+  block:    # 完全禁止
+    - pattern: "rm -rf"      message: "Recursive delete blocked"
+    - pattern: "DROP TABLE"  message: "SQL DROP blocked"
+  escalate: # 需审批
+    - pattern: "rm|delete|unlink"   reason: "File deletion requires approval"
+    - pattern: "token|credential|secret|password"  reason: "Credential access requires approval"
+    - pattern: "transfer|swap|send"  reason: "Financial action requires approval"
+  escalation: { channel: discord, timeout: 300, default: deny }
+```
+超时默认 deny——**不确定就拒绝**。Escalation 流程:agent 尝试 → OpenClaw 拦截 → 发审批请求到 Discord → 用户 `approve/deny <id>` → 放行或换方案。
+
+#### TrustedClaw:可落地的 guardrail 扩展
+owner-aware tool gating、sandbox 必备执行、destructive-command 拒绝、**有界临时审批**(trade-like action 给临时窗口权限,到期收回)。全部用 OpenClaw 已有的扩展点实现,配置可检视,Docker 部署。
+
+#### FASA 范式(arxiv 2603.12644)— 零信任 agentic 执行
+四层顺序防御,在 agent 运行生命周期每阶段拦截异常:**感知与隔离(输入边界)→ 动态意图验证 → 跨层关联 → 持续演进**。核心是把安全焦点从"模型输出"移到"agent 整条执行管道"。Defensible Design(arxiv 2603.13151)进一步指出:prompt injection 是**结构性**问题(agent 持续吞异构内容且保有浏览/读文件/调工具能力),需要的不是又一个确认弹窗,而是**把模糊自然语言意图翻译成有界 action/capability/policy 的权限架构**,在执行前和上下文演进中持续 mediation,在保留任务效用的同时让最小权限可运营。
+
+#### 可观测性:OpenTelemetry 全链路追踪
+对自主 agent,可观测性是安全前提——没有它,你可能 SSH key 没了才发现。instrument 四层:**prompt/agent identity**(触发源+处理 agent)→ **LLM reasoning**(模型、token、推理输出)→ **tool execution**(API 调用、文件访问、命令执行)→ **risk classification**(read-only/destructive 标签)。从 prompt 到 blocked action 的整棵决策树留在 trace 里供事后复盘。
+
+#### 社区实战规则(可复用)
+Reddit 多 agent 团队的硬规则:**"同一操作失败 3 次就停,带 error logs 通过 Telegram 通知"**——写进 AGENTS.md 核心指令,agent 就会遵守。还可让 agent 写共享 escalation 文件,由 supervisor agent 监控。结论:**不需要 fancy orchestrator——heartbeats + cron + shared files + clear instructions in AGENTS.md 就能拿到 90% 的主动行为**,剩下 10% 是调间隔和检查清单直到手感对了。
+
+### 六、最佳实践速查
+
+1. **主动性 = 显式调度基础设施**,不是 prompt 形容词。heartbeat 文件空 = 不主动。
+2. **Heartbeat 配 silence criteria**,否则必然变噪音;`HEARTBEAT_OK` 必须在首尾且余文 ≤300 字。
+3. **轻量巡检用 Heartbeat**(主 session、便宜模型、`lightContext+isolatedSession` 省 40x token);**精确/重任务用 Cron isolated**;**外部系统用 Webhook**;**阈值用 condition watcher(`fire:true`)**。
+4. **降噪四件套**:OK 静默协议 + 通道开关(showOk/showAlerts/useIndicator 全 false 跳过模型调用)+ 持久记忆去重 + cool-down/幂等/有界重试。
+5. **三级风险审批 + guardrails exec(block/escalate + 超时默认 deny)**;破坏性/凭证/财务操作必须人工审批。
+6. **硬约束在模型之外**:工具策略 + exec 审批 + 沙箱 + channel allowlist;别靠 prompt 兜安全。
+7. **OpenTelemetry 全链路 trace**(identity→reasoning→tool→risk),事后可复盘。
+8. **从 1-2 个检查项起步**逐步加;别把 secret 放 HEARTBEAT.md;`includeReasoning` 群聊关闭。
+9. **失败 3 次即停并通知**——写进 AGENTS.md;共享 escalation 文件 + supervisor agent 监控。
+10. **投递兜底**:直接投递失败 → session 排队 → 下次心跳浮现,信息不丢。
+
+> 注:用户点名的 arxiv 2603.27517 因 Tavily 配额耗尽未能直取,本节安全维度由相邻 arxiv 论文(2603.12644 FASA 范式、2603.13151 Defensible Design)、HiddenLayer 研究、TrustedClaw 论文及官方 docs.openclaw.ai/gateway/security 共同覆盖,结论一致。
+
+---
+
+## 十五、容器化
+
+### 一、容器化全景：四层部署形态与决策树
+
+OpenClaw 的容器化不是单一的"打包跑起来"，而是沿**隔离强度 × 运维成本**两个轴展开的四层形态，理解这层分级是所有后续决策的前提：
+
+| 形态 | 隔离边界 | 持久化 | 适用场景 | 代表实现 |
+|---|---|---|---|---|
+| **L1 本地直装** | 无（共享宿主用户态） | 宿主 `~/.openclaw` | 开发/调试、信任模型 | `curl ... \| bash` 安装脚本 |
+| **L2 单容器 Docker** | 容器 namespace | bind-mount 卷 | 个人 VPS、单 agent | `docker run` / Compose |
+| **L3 容器 + 工具沙箱** | 容器 + 子容器 microVM/throwaway | 主容器卷 + 沙箱工作区 | 生产、多 agent、对公渠道 | `agents.defaults.sandbox` (DooD) |
+| **L4 Serverless 容器** | Cloudflare Sandbox 微 VM + R2 | R2 对象存储挂载为 FS | 无服务器、全球边缘、零运维 | moltworker |
+
+**决策思路**：隔离需求随"agent 能执行 shell/文件操作"且"渠道对公（Telegram/WhatsApp）"而陡增。对公渠道意味着 prompt injection 来自不可信输入，此时 L1/L2 的"容器边界=进程边界"不够——agent 在容器内仍能读 `openclaw.json` 里的 bot token、能 `curl` 外传。必须升到 L3（工具级沙箱）或 L4（执行环境整体 ephemeral）。这条升级链是 OpenClaw 容器化的核心叙事。
+
+---
+
+### 二、Docker 镜像构建：极简基础镜像 + 预装工具的取舍
+
+#### 官方镜像与最小 Dockerfile
+官方发布 `ghcr.io/openclaw/openclaw:latest`（约 500MB），社区镜像 `openclaw/gateway`、`fourplayers/openclaw`。自建镜像的最小范式（腾讯云社区实测）：
+
+```dockerfile
+FROM node:22-bookworm
+RUN npm install -g openclaw-cn@2026.2.5
+WORKDIR /root/clawd
+RUN mkdir -p /root/.openclaw
+ENV OPENCLAW_CONFIG=/root/.openclaw
+EXPOSE 18789
+CMD ["openclaw-cn", "gateway", "--port", "18789"]
+```
+
+**关键设计点**：
+- **基础镜像选 `node:22-bookworm` 而非 alpine**：OpenClaw 的 Skills 依赖系统级工具（ripgrep/jq/gh/ffmpeg/tmux/uv），Debian userland 兼容性好；alpine 的 musl 会让部分 npm 原生模块和 skill 工具踩坑。社区实测预装 `ripgrep/jq/gh/ffmpeg` 后，可用 skill 从 8 个涨到 13 个。
+- **Chromium 单独裁剪**：完整 Chromium 约 +500MB，若不启用浏览器 skill 可在镜像层剔除，需要时用 sidecar 容器提供 CDP（端口 9222）。
+- **预装消除冷启**：把 `npm install -g openclaw` 烘焙进镜像，避免每次重启跑 3 分钟 npm install（Raspberry Pi K8s 实践）。
+- **ARM64 交叉构建**：`docker buildx build --platform linux/arm64`，树莓派/Apple Silicon 场景必备。
+
+#### 镜像分层范式（可复用）
+```
+base(node:22-bookworm + 系统工具) → openclaw-runtime(npm install -g) → sandbox-jail(bookworm-slim, 精简)
+```
+注意**主镜像和沙箱镜像分离**：主镜像跑 Gateway（重、含 Node + 工具），沙箱镜像 `openclaw-sandbox:bookworm-slim` 只做"监狱牢房"（极简、一次性、`--network=none`）。这是 OpenClaw 沙箱机制的前提。
+
+---
+
+### 三、持久化卷设计：`~/.openclaw` 是唯一命脉
+
+#### 单一关键挂载
+所有容器化指南都收敛到同一个结论：**`./state:/root/.openclaw`（或 `~/.openclaw:/home/node/.openclaw`）是唯一关键挂载**。该目录承载 OpenClaw 全部状态，丢失即从零开始：
+
+| 容器内路径 | 内容 | 备份优先级 |
+|---|---|---|
+| `~/.openclaw/openclaw.json` | Gateway 配置（端口/bind/token） | 高 |
+| `~/.openclaw/agents/` | 每 agent 配置与工作区 | 关键 |
+| `~/.openclaw/memory/` | MEMORY.md、daily notes、SQLite 记忆索引 | 关键 |
+| `~/.openclaw/credentials/` | 渠道 token（Telegram/Slack/WhatsApp QR） | 关键 |
+| `~/.openclaw/skills/` | 已装 skill | 中（可重装） |
+| `~/.openclaw/cron/jobs.json` | 定时任务 | 高 |
+
+#### 官方 Compose 的三段式挂载
+官方 `docker-compose.yml` 把状态拆成三个独立卷（docs.openclaw.ai/install/docker），各有不同生命周期与权限需求：
+
+```yaml
+volumes:
+  - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw                    # 配置+状态+凭证
+  - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace        # agent 工作区
+  - ${OPENCLAW_AUTH_PROFILE_SECRET_DIR}:/home/node/.config/openclaw # OAuth/profile 密钥
+```
+**健壮性设计**：变量未设置时 fallback 到 `${HOME}`，`HOME` 也没有则落到 `/tmp`，保证 `docker compose up` 在裸环境永不出"空 source volume"错误。
+
+#### UID 对齐坑（最高频故障）
+官方镜像以 `node` 用户（uid 1000）运行。宿主目录若属主不同 → `Permission denied`。解法：`sudo chown -R 1000:1000 ~/.openclaw`，或腾讯云教程的粗暴法 `chmod 777 ~/.openclaw && chmod 777 ~/.openclaw/credentials`（生产不推荐 777，应走 chown）。
+
+#### 配置即代码（可复用范式）
+把 `openclaw.json` 单独以 `:ro` 挂入，实现版本化配置：
+```yaml
+- ./config/openclaw.json:/home/node/.openclaw/openclaw.json:ro
+```
+工作流：先在容器内 `openclaw onboard` 交互配好 → 把生成的 `openclaw.json` 抽出来入 Git → 之后用声明式重建。Metoro 的 K8s 实践正是此模式。
+
+---
+
+### 四、多容器编排：Compose 与 Kubernetes 两条路
+
+#### 4.1 Docker Compose：gateway + cli 双服务
+生产级 Compose 的核心特征（stack-junkie 模板）：
+- **双服务**：`openclaw-gateway`（长驻、`--bind lan --port 18789`）+ `openclaw-cli`（交互式、`stdin_open/tty` 跑 TUI/onboard）。
+- **绑定回环**：`127.0.0.1:18789:18789` 而非 `0.0.0.0`，强制经反代暴露，最小化攻击面。
+- **资源限制**：`memory: 4G / cpus: 2.0`，`<512MB` 会 OOM（腾讯云实测）。
+- **安全加固**：`security_opt: no-new-privileges:true` + `init: true`（僵尸进程回收）。
+- **健康检查**：`openclaw status` 或 `openclaw gateway status`，30s 间隔。
+- **可选编排扩展**：Watchtower（每日自动更新镜像）、Redis（缓存）、DMR 模型服务（本地模型）、MCP 工具服务（网页搜索）。
+
+#### 4.2 Kubernetes：StatefulSet 单实例 + PVC
+**官方立场（docs.openclaw.ai/install/kubernetes）**："为什么不用 Helm"——OpenClaw 是**单容器 + 配置文件**，有价值的定制在 agent 内容（Markdown/skill/config），不在基础设施模板。故官方给 Kustomize manifests 而非 Helm：
+
+```
+Namespace: openclaw
+├── Deployment/openclaw        # 单 pod，init container + gateway
+├── Service/openclaw           # ClusterIP:18789
+├── PersistentVolumeClaim      # 10Gi，agent 状态与配置
+├── ConfigMap/openclaw-config  # openclaw.json + AGENTS.md
+└── Secret/openclaw-secrets    # gateway token + API keys
+```
+
+**社区 Helm chart 两类**：
+- `feiskyer/openclaw-kubernetes`：StatefulSet + 持久存储 + 可选 **LiteLLM 代理**（模型路由，默认接 GitHub Copilot provider）+ Tailscale 集成（每 pod 注册为 Tailscale 设备，免暴露公网端口）。
+- `serhanekicii/openclaw-helm`：基于 `bjw-s/app-template`，带 NetworkPolicy（仅允许 `gateway-system` namespace 入站 18789）、Chromium sidecar（CDP 9222）。
+
+**关键约束：不能水平扩缩**。OpenClaw 是单实例有状态（`trustedProxies` 仅支持精确 IP 匹配、不支持 CIDR），多副本会导致状态分裂。多用户靠 **binding 系统**——单 K8s 部署 + 每成员独立 workspace + 共享团队"大脑"（humble92 模式），而非多副本。
+
+**访问范式**：`kubectl port-forward svc/openclaw 18789:18789` 走本地隧道，Ingress 仅在确需永久外部 dashboard 时开启（"攻击面必然增大，需谨慎"）。
+
+#### 4.3 树莓派 K8s 实践（边缘场景范式）
+`nodeSelector` 固定节点（2am 故障时知道去哪查）+ MetalLB（裸金属无云 LB）+ Nginx Ingress + 私有 GHCR + imagePullSecret。Chromium 裁剪省 500MB。展示了一条"ARM 边缘集群 + 严格网络围栏"的可复用路径。
+
+---
+
+### 五、容器安全与沙箱隔离（容器化的真正价值所在）
+
+#### 5.1 核心洞察：容器隔离 ≠ agent 安全
+Katonic AI 一针见血：**"把 agent 跑在 Docker 里当安全策略，是解决错了问题。"** 容器隔离的是 agent 与宿主（namespace/cgroup/FS 层），但 agent 的威胁模型是**行为级**——它能调哪些端点、读写哪些文件、调哪些模型、越界时怎么办。这些 Docker 从不设计管理。因此 OpenClaw 在容器之上叠了**工具级沙箱**。
+
+#### 5.2 两层沙箱架构
+官方（docs.openclaw.ai/gateway/security）定义两种互补路径：
+1. **Full Gateway in Docker**：整个 Gateway 容器化，容器即边界。
+2. **Tool sandbox**（`agents.defaults.sandbox`）：宿主跑 Gateway，仅把**工具执行**丢进隔离沙箱。Docker 是默认 backend。
+
+#### 5.3 Docker 沙箱 backend 的四把锁（可复用安全基线）
+启用沙箱后，每个工具调用 spin up 一个 throwaway 兄弟容器，默认配置（docs.openclaw.ai/gateway/sandboxing）：
+```yaml
+network: "none"          # 无出站，阻断数据外传
+readOnlyRoot: true       # 只读根文件系统
+capDrop: ["ALL"]         # 丢弃全部 Linux capabilities
+image: openclaw-sandbox:bookworm-slim  # 极简专用镜像
+```
+YouTube Security Masterclass 总结为"三命令锁三攻击面"：`network=none`（断网）+ `readOnlyRoot=true`（禁写）+ `capDrop=[all]`（禁权）。
+
+#### 5.4 沙箱 scope 与 workspaceAccess（精细隔离控制）
+- **scope**（容器生命周期）：`session`（每会话一容器，最强隔离，结束即毁）/ `agent`（同 agent 跨会话共享容器，留存部分状态）/ `shared`（全 agent 共享一容器，省资源弱隔离）。
+- **workspaceAccess**（agent 工作区可见性）：`none`（默认，工具只见 `~/.openclaw/sandboxes` 下的沙箱工作区，agent 工作区不可见）/ `ro`（只读挂到 `/agent`，禁 write/edit/apply_patch）/ `rw`（读写挂到 `/workspace`）。
+- **elevated mode**：显式绕过沙箱。原则：**例外而非默认**，用完即回沙箱。
+
+#### 5.5 DooD 模式与 docker.sock 的双刃剑（生产最关键权衡）
+当 Gateway 本身容器化时，沙箱机制要求 Gateway 通过宿主 Docker socket 编排**兄弟容器**（Docker-out-of-Docker, DooD）。这带来两个硬约束：
+
+**约束一：路径映射**。`openclaw.json` 与 `workspace` 必须以宿主绝对路径（如 `/home/user/.openclaw/workspaces`）挂载，且 Gateway 容器内 bind mount 路径必须与宿主一致（`-v /home/user/.openclaw:/home/user/.openclaw`），否则沙箱容器内 `EACCES`。
+
+**约束二：docker.sock = 提权路径**。挂 `/var/run/docker.sock` 等于给容器 root 级宿主访问。这是 Hostinger issue #29933 的核心矛盾。
+
+#### 5.6 案例：Hostinger VPS 模板的沙箱缺失（信源级实证）
+`ghcr.io/hostinger/hvps-openclaw` 模板**未挂 docker.sock**，导致内置沙箱失效。安全影响对比表（issue #29933）极具教学价值：
+
+| 攻击步骤 | 无沙箱（当前） | 有沙箱（应修复） |
+|---|---|---|
+| Telegram 投递恶意消息 | agent 处理 | agent 处理 |
+| 诱骗执行 shell | 在 gateway 容器内执行 | 在隔离沙箱执行 |
+| `cat /data/.openclaw/openclaw.json` | 成功，token 泄露 | 沙箱内文件不存在 |
+| `curl` 外传 | 成功外传 token | 网络被阻断 |
+| 清理 | 攻击者可持久化 | 沙箱自动销毁 |
+
+**结论**：容器化 Gateway 但不开沙箱 = 把 RCE 的爆炸半径从"整台宿主"缩到"gateway 容器内全部凭证"，仍不可接受。生产必须 `agents.defaults.sandbox` on + docker.sock 挂载 + 最小权限。
+
+#### 5.7 更强隔离：Docker Sandboxes microVM
+Docker 新原语 Docker Sandboxes 跑 **microVM（独立内核，非共享宿主内核）**，提供更强边界：
+- 网络代理可配置**拒绝任意出站主机**。
+- **API key 注入**：`ANTHROPIC_API_KEY`/`OPENAI_API_KEY` 由代理注入，agent 容器内**根本拿不到**，无法泄露。
+- 工作区读写仅限授权目录。
+适用本地模型（Docker Model Runner + gpt-oss/Ollama）+ 全隐私场景。Cris Santiago 的 Ollama 版把 TUI 留宿主、agent 执行进 microVM，并烘焙预装镜像让后续启动秒级。
+
+#### 5.8 安全加固清单（meta-intelligence 汇总）
+| 优先级 | 措施 | 实现 |
+|---|---|---|
+| 必需 | 设 Gateway Token | `openclaw doctor --generate-gateway-token` |
+| 必需 | 保持 Local 模式 | `gateway.mode local` |
+| 必需 | 升级最新版 | `npm update -g openclaw` |
+| 强烈推荐 | Docker 沙箱 | Docker Compose 部署 |
+| 强烈推荐 | 审计所有 Skill | `~/.openclaw/skills/skill.md` |
+| 推荐 | 远程模式加 TLS | Nginx 反代 + Let's Encrypt |
+| 推荐 | 渠道限 owner_only | `channels.*.dmPolicy owner_only` |
+| 高级 | 网络分段 | 专用 VLAN |
+
+**策略漂移警惕**（官方安全文档）：sandbox Docker 配了但 sandbox mode off = 无效；`denyCommands` 只匹配精确 command ID（如 `system.run`）不匹配 payload 内 shell 文本；`tools.profile=minimal` 被单 agent 覆盖；`tools.exec.host` 默认 `auto` 不等于隐式 `sandbox`。
+
+---
+
+### 六、moltworker：Cloudflare Workers 上的 serverless 架构（L4 范式）
+
+moltworker（7.9k stars）是把 OpenClaw Gateway 从"你管理的硬件"搬到 Cloudflare 边缘的参考实现。其架构是 serverless 化有状态 agent 的教科书范式。
+
+#### 6.1 核心思路：解耦"大脑"与"执行环境"
+moltworker 的安全哲学是**把执行逻辑移出本地网络**，移入 ephemeral Cloudflare Sandbox（微 VM），从根上消除持久 OS 被破坏的可能。
+
+#### 6.2 五组件架构（blog.cloudflare.com）
+```
+[Cloudflare Access(JWT 认证)] → [入口 Worker(Hono 路由/API 代理/CDP 代理/JWT 校验)]
+                                       │
+                          ┌────────────┼────────────┐
+                          ▼            ▼            ▼
+                   [Sandbox 容器]   [R2 存储器]  [Browser Rendering]
+                   (跑 Gateway      (持久记忆)    (headless 浏览器)
+                    runtime+集成)        ↑              ↑
+                          │              │              │
+                          └──── 启动时把 R2 挂载为 FS ──┘
+                                       │
+                              [AI Gateway(代理 AI provider)]
+```
+
+1. **入口 Worker**：API 路由器 + 代理，受 Cloudflare Access 保护（用户名/密码或 OAuth → JWT 校验）。Hono 框架。
+2. **Sandbox 容器**（Cloudflare Containers + Durable Objects 协调）：跑标准 OpenClaw Gateway runtime 及其集成。每个消息请求 spin up 一个全新隔离 Linux 容器（预装 Python3/Node/pip/npm），处理完即休眠。`@cloudflare/sandbox` npm 包提供 TS API。
+3. **R2 对象存储**（"记忆"）：Sandbox 是 ephemeral，靠 R2 持久化配置、聊天历史、session。**启动时把 R2 bucket 挂载为文件系统**，给 agent "持久"的错觉而无持久 OS 的风险。
+4. **Browser Rendering**（"眼睛"）：在 Cloudflare 边缘跑 headless Chromium，支持 Puppeteer/Stagehand/Playwright/MCP。实现方式是**薄 CDP 代理**：从 Sandbox 容器 → moltworker Worker → 回到 Browser Rendering（Puppeteer API），并在 Sandbox 启动时注入 Browser Rendering skill。从 runtime 视角看，它有一个本地 CDP 端口可用。
+5. **AI Gateway**：代理所有 AI provider 请求，提供集中可见性与控制（缓存/日志/限流）。
+
+#### 6.3 Bindings 与密钥
+Worker 的 binding 区可见三件套：Durable Object（沙箱状态协调）、R2 bucket、browser renderer。密钥经 `npx wrangler secret put ANTHROPIC_API_KEY` 与 `MOLTBOT_GATEWAY_TOKEN`（`openssl rand -hex 32` 生成）注入。部署 `npm run deploy`，首次请求冷启 1-2 分钟。
+
+#### 6.4 serverless 化 agent 的可复用范式
+- **执行 ephemeral + 持久化外置**：无状态 Worker + 有状态对象存储（R2/D1/KV）是 serverless agent 的通用骨架。OpenClaw 的 `~/.openclaw` 本地目录被 R2 mount 替代，是"本地 FS 抽象 → 对象存储挂载"的范式迁移。
+- **CDP 反向代理**：让沙箱内 agent 以为本地有浏览器，实则复用边缘 Browser Rendering——可复用于任何"沙箱内无浏览器但需浏览器能力"的场景。
+- **JWT + Access 替代 Gateway Token 网络层**：把认证上移到边缘，Worker 不直接对公网。
+- **限制**：serverless 内无法跑本地 LLM，必须用云端模型（或 Cloudflare AI Gateway 接各 provider）。
+
+---
+
+### 七、托管 VPS 与云市场镜像（零运维通道）
+
+#### OneClickClawd（oneclickclawd.ai）
+定位"给非技术创始人/代理商"。$29/月全包，60 秒部署，无 SSH/Docker/YAML。跑在**专用隔离云基础设施**，由平台管服务器/更新/uptime。对标表清晰：自建=40hrs/月人工+高破损风险，VPS 自管=6-10hrs+配置，OneClickClawd=5 分钟+零技术门槛。适合"卖 agent 服务给客户收 $500/月、付平台 $29"的代理商模式。
+
+#### 云市场应用镜像（国内主路径）
+- **阿里云**：轻量应用服务器选 OpenClaw/Moltbot 镜像一键部署，放行 18789、配百炼 API-Key、生成 Token。计算巢（Compute Nest）模式认准"OpenClaw 官方社区"发布者。推荐 2核4G 起步，华东杭州/华南深圳拉镜像最快。中国内地域联网搜索受限，选香港/弗吉尼亚免备案。
+- **腾讯云 Lighthouse**：应用镜像模板一键部署，原生集成微信/企业微信优势，国内连微信 API 延迟极低。`docker pull ghcr.io/openclaw/openclaw:latest`（约 500MB，配镜像加速 2-5 分钟）。
+- **京东云**：Moltbot 应用镜像 + JoyBuilder 模型平台 API-Key。
+- **Hostinger**：Docker Manager 目录部署，模板 `ghcr.io/hostinger/hvps-openclaw`（注意 §5.6 沙箱缺失问题）。
+- **DigitalOcean 1-Click**：预配 Ubuntu 24.04 + Node 22 + Docker + 安全最佳实践，token 落 `/opt/clawdbot.env`，systemd 服务 `clawdbot`，支持 token 月度轮换脚本。
+
+**通用模式**：云市场镜像 = 官方镜像 + 云厂脚本（端口放行/API Key 写入/Token 生成），把 L2 单容器 Docker 的手动步骤产品化。但默认多不带工具沙箱（L3），需自行补 docker.sock + sandbox 配置。
+
+---
+
+### 八、容器化 vs 本地直装：取舍决策
+
+| 维度 | 本地直装（L1） | 容器化（L2-L4） |
+|---|---|---|
+| **隔离** | 无，agent 拥有用户全部权限，RCE 即全盘 | 进程/内核/FS 隔离，L3 以上工具级沙箱 |
+| **24/7** | 笔记本合盖即断 | VPS/云/边缘常驻 |
+| **环境干净** | 污染宿主 Node/依赖 | 宿主零污染，镜像内自带 Node 22 |
+| **可移植** | 难，依赖宿主状态 | 镜像+卷，跨机 lift-and-shift |
+| **更新** | `npm update` 可能动宿主 | 换镜像 tag，回滚即换 tag |
+| **沙箱开销** | 无（但无隔离） | DooD 需 docker.sock（提权风险）+ 路径映射约束 |
+| **本地模型** | 直装最顺 | 容器内需 DMR/Ollama sidecar 或 Docker Model Runner |
+| **调试** | 直接 | 需 `docker exec` / port-forward |
+
+**核心取舍**：本地直装换来零开销与本地模型顺滑，代价是"信任模型不搞破坏"——对公渠道下不可接受。容器化换来隔离与可移植，代价是 DooD 的 docker.sock 提权面与路径映射复杂度。**生产铁律：对公渠道（Telegram/WhatsApp 等）一律 L3（容器 + 工具沙箱），绝不 L1/L2 裸跑。**
+
+---
+
+### 九、生产部署最佳实践清单（可复用）
+
+1. **镜像**：`node:22-bookworm` 基础 + 预装系统工具（ripgrep/jq/gh/ffmpeg）+ 预装 openclaw 消除冷启；主镜像与 `openclaw-sandbox:bookworm-slim` 分离；固定版本 tag（`openclaw/gateway:2026.2.19`）禁用 `latest`。
+2. **持久化**：单一关键卷 `~/.openclaw`，按官方三段式（config/workspace/auth）拆分；UID 对齐 `chown 1000:1000`；`openclaw.json` 以 `:ro` 挂入做配置即代码；PVC 10Gi（K8s）。
+3. **网络**：绑 `127.0.0.1:18789`，经 Nginx/Traefik 反代暴露；Traefik labels 自动 TLS（OVHcloud 范式）；远程模式必加 Let's Encrypt。
+4. **安全基线**：`no-new-privileges:true` + `init:true` + 资源限制（4G/2CPU）+ 健康检查；开 `agents.defaults.sandbox`（network=none/readOnlyRoot/capDrop=all）；挂 docker.sock 启用 DooD 沙箱但接受其提权面；`dmPolicy=owner_only`；定期 `openclaw doctor`。
+5. **编排**：单实例有状态，不水平扩缩；K8s 用 Kustomize（官方）或 app-template Helm（社区）；多用户走 binding 系统而非多副本；port-forward 优先，Ingress 慎开。
+6. **可观测**：Watchtower 自动更新镜像；`docker compose logs`/`journalctl -u clawdbot`；Metoro 式监控"agent 调了哪些 API/端点/频次"以抓越界行为。
+7. **备份**：每日云盘快照策略；`~/.openclaw/{agents,memory,credentials}` 关键目录定期 tar；token 定期轮换（DO 1-Click 月度脚本）。
+8. **serverless 选项**：无服务器需求 + 全球边缘 + 零运维 → moltworker（R2 持久 + Sandbox 微 VM + Access 认证 + AI Gateway），但放弃本地 LLM。
+9. **托管兜底**：非技术用户/代理商 → OneClickClawd 或国内云市场镜像，但补沙箱配置。
+
+**一句话总结**：OpenClaw 容器化的本质不是"打包运行"，而是沿 L1→L4 递进的隔离链——从"信任模型"到"工具级 throwaway 沙箱"再到"执行环境整体 ephemeral"，每升一级都是对 prompt injection → RCE 攻击面的实质性收窄。`~/.openclaw` 单卷持久化是贯穿所有形态的命脉，DooD + docker.sock 是容器化 Gateway 启用沙箱时无法回避的提权权衡，moltworker 则示范了"本地 FS 抽象迁移到对象存储挂载 + CDP 反向代理"的 serverless agent 通用骨架。
+
+---
+
+## 十六、本地部署
+
+> 数据来源说明:本节基于官方文档(docs.openclaw.ai、mintlify 镜像)、官方仓库 issue、PingCAP/Tencent Cloud 架构拆解、多份 Mac Mini/VPS 实战教程交叉验证。研究末轮命中 Tavily 用量上限,**arXiv 2603.27517 安全论文与 SamurAIGPT/mergisi 两个 awesome-openclaw 清单未能直接抓取**,相关安全结论以官方 docs「Security and sandboxing」+ exec-approvals 机制 + 实战教程交叉佐证,并标注来源。
+
+---
+
+#### 一、为什么 Mac Mini 是首选:Apple 底层工具 + 系统集成的「能力完全体」
+
+OpenClaw 的能力并非在各平台均匀分布,而是呈**阶梯式**:macOS 是唯一能力完全体,Linux/Windows 是「Gateway + 通用工具」子集。这决定了部署选型的第一性原理——**先问你要用哪些能力,再选平台**,而不是反过来。
+
+**1. Apple Silicon 统一内存 = 本地推理的天然优势**
+M 系列芯片的 CPU/GPU/Neural Engine 共享同一池 RAM,这对跑本地模型(Ollama/llama.cpp/MLX)是结构性红利:无需像独显机那样在 VRAM↔RAM 间搬运权重。统一内存即「显存」,24GB Mac 可跑 13B-34B,48GB 可跑 70B+。功耗方面,M2 Mac Mini 空载仅 5-7W,7×24 运行电费约 1-2 美元/月——这是 VPS 无法比拟的「一次性硬件投资 + 近零边际成本」。([ai.cc](https://www.ai.cc/blogs/how-i-set-up-openclaw-on-a-mac-mini))
+
+**2. macOS 独占的系统能力栈(非 macOS 不可)**
+- **iMessage 通道**:硬约束,必须物理运行 Messages.app + Full Disk Access 读 `~/Library/Messages/chat.db`。旧 `imsg` CLI 桥已废弃,BlueBubbles 仍依赖 macOS。issue #44406 明确称之为「macOS-only bottleneck」,社区尝试 relay 插件让 Linux/VPS 也能用,但官方未合并。([openclawai.io/imessage](https://openclawai.io/integrations/imessage)、[issue #44406](https://github.com/openclaw/openclaw/issues/44406)、[Tencent Cloud 教程](https://www.tencentcloud.com/techpedia/139192))
+- **菜单栏 App(menu bar companion)**:这是 macOS 的「Node Host」完全体,把 Gateway + 原生能力打包:
+  - `system.run`(AppleScript 自动化)、`system.notify`、`system.which`
+  - `camera.snap`、`screen.record`、`canvas.*`(WebView UI 自动化)
+  - 语音唤醒「Hey OpenClaw」(本地语音识别)、Talk Mode、Push-to-Talk
+  - 统一处理 TCC 权限(Notifications/Accessibility/Screen Recording/Microphone/Speech Recognition/Automation)
+- **原生系统集成**:Apple Notes/Reminders/Calendar/iMessage 直接可调,作者 Peter Steinberger 是 Mac 用户,「macOS integrations ship by default since day one」。([mintlify macOS](https://openclaw-openclaw.mintlify.app/platforms/macos)、[embertype](https://embertype.com/blog/how-to-set-up-openclaw-mac)、[reddit](https://www.reddit.com/r/clawdbot/comments/1rbqsnx/why_the_overwhelming_choice_of_mac_minis_to_run))
+
+**关键洞见**:菜单栏 App 本身内嵌了 node-host runtime 并作为该 Mac 的唯一 node 身份连入 Gateway。若在 Mac 上再 `openclaw node run` 起第二个 headless node,会产生两个 node 身份——这是官方明确警告的反模式。([docs nodes](https://docs.openclaw.ai/nodes)、[docs cli/node](https://docs.openclaw.ai/cli/node))
+
+**3. 硬件档位矩阵(来自多份实战教程收敛的共识)**
+
+| 档位 | 配置 | 能跑什么 | 来源 |
+|---|---|---|---|
+| 入门 | Mac Mini M2 8GB | 仅云端模型(Claude/OpenAI API),Gateway + 通道 + 浏览器自动化 | [ai.cc](https://www.ai.cc/blogs/how-i-set-up-openclaw-on-a-mac-mini) |
+| 推荐 | Mac Mini M4 16GB / 512GB SSD(~$700) | 主 agent + 2-3 子 agent 并发,10+ 通道;瓶颈是 API 限流不是硬件 | [florian-darroman](https://florian-darroman.medium.com/openclaw-mac-mini-setup-the-step-by-step-guide-389337569f1a) |
+| 本地模型甜点 | Mac Mini M4 24-32GB | 13B-34B 本地模型 + 长上下文 | [ai.cc](https://www.ai.cc/blogs/how-i-set-up-openclaw-on-a-mac-mini) |
+| 重度本地 | Mac Mini M4 Pro 48GB | 70B+ 或多模型并驻 | [ai.cc](https://www.ai.cc/blogs/how-i-set-up-openclaw-on-a-mac-mini) |
+
+> TDS 实测给出更具体的本地模型红线:**至少 M2+ 且 24GB RAM**;16GB「能用但很紧,大上下文会出错」;agent 需要长上下文,这会阻止跑更大的 27B 版本(即便量化)。([towardsdatascience](https://towardsdatascience.com/run-a-local-llm-with-openclaw-on-your-mac-mini))
+
+---
+
+#### 二、各平台差异:同一套代码,三套进程模型
+
+OpenClaw 的「一次安装、跨平台」靠的是**平台自适应的 daemon 安装器**——`openclaw onboard --install-daemon` 会按平台生成对应的服务单元。这是理解部署差异的核心。
+
+| 维度 | macOS | Linux | Windows |
+|---|---|---|---|
+| 服务管理 | LaunchAgent `~/Library/LaunchAgents/ai.openclaw.gateway.plist` | systemd user service `~/.config/systemd/user/openclaw-gateway.service` | Task Scheduler 任务(官方推荐改用 WSL2) |
+| 启停命令 | `launchctl load/unload` | `systemctl --user start/stop` | `schtasks /run /end /query` |
+| 安装器 | `curl … \| bash` | `curl … \| bash` | PowerShell `iwr … \| iex` 或原生 Hub app |
+| 系统能力 | 完全体(菜单栏 App + iMessage + Canvas + camera/screen) | Gateway + 通用工具(无 iMessage/无原生 Mac 能力) | 原生 Hub app(setup/tray/chat/node mode/local MCP)或 WSL2 |
+| 7×24 注意点 | launchd 自动拉起 | 需 `loginctl enable-linger`(否则 SSH 断开即停) | WSL2 默认关机即杀进程;需 `/etc/wsl.conf` 开 `systemd=true` + 设开机启动 distro |
+
+来源:[mintlify daemon](https://openclaw-openclaw.mintlify.app/cli/daemon)、[docs install](https://docs.openclaw.ai/install)、[docs platforms/linux](https://docs.openclaw.ai/platforms/linux)、[mrprompts WSL2](https://mrprompts.substack.com/p/openclaw-on-windows-the-complete)、[docs getting-started](https://docs.openclaw.ai/start/getting-started)。
+
+**Windows 的关键陷阱(WSL2 特有)**:
+1. **文件系统性能**:agent 频繁读写的文件**必须放在 Linux 文件系统(`~`)而非 `/mnt/c`**——跨文件系统访问极慢,agent 会「感觉卡顿」。
+2. **WSL2 关机即杀进程**:默认无终端打开时 WSL2 关闭 VM,daemon 随之死亡。解法:开 `systemd=true` + Task Scheduler 设 `wsl` 开机启动,或保持一个终端常驻 + 禁止 Windows 睡眠。
+3. 「诚实测试法」:重启 Windows → 登录 → 等 1 分钟 → 手机发消息,agent 回应才算真正 24/7。([mrprompts](https://mrprompts.substack.com/p/openclaw-on-windows-the-complete))
+
+**最低要求收敛**:Node.js 22+(硬性,旧版安装器直接失败)、2 核 / 8GB RAM(本地模型另算)、pnpm、Linux 推荐 Ubuntu 24.04。Hivelocity 给的 VPS 下限更低(2 核 / 2GB RAM / 2GB 存储),但那仅适用于纯 API 模式不跑本地模型。([docs install](https://docs.openclaw.ai/install)、[alexhost](https://alexhost.com/faq/how-to-install-openclaw-on-macos)、[hivelocity](https://www.hivelocity.net/kb/self-hosting-openclaw-guide))
+
+---
+
+#### 三、VPS 7×24 部署:把「常驻 daemon」做对
+
+VPS 的价值不是算力(推理仍走 API 或远程本地模型),而是**固定公网 IP + 永远在线 + 任意设备可达**。VPS 部署的成败几乎全在 systemd 与安全加固两个动作上。
+
+**1. systemd user service + linger 是 7×24 的命门**
+```ini
+[Unit] Description=OpenClaw Gateway After=network-online.target Wants=network-online.target
+[Service] Type=simple EnvironmentFile=/opt/openclaw/.env WorkingDirectory=/root/.openclaw
+ExecStart=/usr/bin/openclaw gateway --force Restart=always RestartSec=2
+[Install] WantedBy=multi-user.target
+```
+两条不可省:`systemctl --user enable openclaw-gateway`(开机自启)+ `sudo loginctl enable-linger $USER`(用户不登录也保持运行)。**没开 linger 是最常见的「SSH 里能用、断开就哑火」根因**。([lumadock](https://lumadock.com/tutorials/openclaw-systemd-discord-qwen-free-model)、[ramnode](https://www.ramnode.com/guides/openclaw)、[muktharvortegix](https://medium.com/@muktharvortegix/how-to-set-up-openclaw-on-a-vps-your-24-7-ai-agent-in-2026-5d2cb7b5163b)、[centminmod isolated-vps](https://github.com/centminmod/explain-openclaw/blob/master/03-deploy/isolated-vps.md))
+
+**2. 安全加固清单(面向公网必须做)**
+- 禁 root SSH + 仅密钥登录(`PermitRootLogin no` / `PasswordAuthentication no`)
+- UFW 仅放行 SSH;OpenClaw 是出站连接(Telegram 轮询、LLM API),默认无需开入站端口(webhook 通道才单独开)
+- 独立非特权用户 `adduser openclaw`(最小权限,推荐 VPS 上不堆个人敏感数据)
+- 加 2GB swap + `vm.swappiness=10`(低内存 VPS 防 OOM 杀进程)
+- **Gateway token 轮换**:centminmod 给了 `rotate-openclaw-token.sh` 脚本,用 `openssl rand -hex 32` 生成新 token 写回 `~/.openclaw/openclaw.json` 并 restart
+- **DM pairing 策略**:未知发件人收到配对码,未批准不处理消息——「private VPS 部署的第一道防线」
+- 诊断:`openclaw doctor --repair` 自愈大部分误配;`journalctl -u openclaw-gateway.service -f` 看日志
+
+([cybernews](https://cybernews.com/vps/how-to-deploy-openclaw-on-a-vps)、[danubedata](https://danubedata.ro/blog/self-host-openclaw-vps-ai-assistant-2026)、[centminmod](https://github.com/centminmod/explain-openclaw/blob/master/03-deploy/isolated-vps.md)、[ramnode](https://www.ramnode.com/guides/openclaw))
+
+**3. 本地 vs VPS 的取舍表(DanubeData 收敛的决策矩阵)**
+
+| 维度 | 本地(笔记本/Mac Mini) | VPS |
+|---|---|---|
+| 可用性 | 仅开机时 | 7×24 |
+| Telegram/Discord 可达 | 需端口转发 | 直连公网 IP |
+| 本地推理 | 耗笔记本电池 | 独占资源(但 VPS 多无 GPU,仍走 API 或远程 Ollama) |
+| 多人 | 单用户 | 多用户经消息通道 |
+| 持久性 | 绑定单机 | 卷持久化、重启不丢 |
+
+---
+
+#### 四、本地 LLM 配置:把 Ollama/LM Studio 当成「Provider 插件」
+
+OpenClaw 的本地模型不是「另一个程序」,而是**内置 Provider 插件**——和 Anthropic/OpenAI 同构,走统一的 `models.providers.<id>` 配置。这是复用性最强的架构决策。
+
+**1. 后端选型矩阵(官方 docs 给的决策表)**
+
+| Backend | 何时用 |
+|---|---|
+| **ds4** | macOS Metal 跑 DeepSeek V4 Flash,支持 OpenAI 兼容工具调用 |
+| **LM Studio** | 首次本地配置、GUI loader、原生 Responses API |
+| **Ollama** | CLI 工作流、模型库、hands-off systemd 服务 |
+| **vLLM / SGLang / MLX** | 高吞吐自托管、OpenAI 兼容 HTTP 端点 |
+| **LiteLLM / OAI-proxy** | 前置代理其他模型 API,让 OpenClaw 当 OpenAI 对待 |
+
+([docs local-models](https://docs.openclaw.ai/gateway/local-models)、[docs model-providers](https://docs.openclaw.ai/concepts/model-providers))
+
+**2. Ollama 最小配置(Linux/通用)**
+```json
+{"baseUrl":"http://localhost:11434/v1","apiKey":"ollama-local","api":"openai-completions",
+ "models":[{"id":"glm-4.7-flash-32k","reasoning":true,"contextWindow":32768,"maxTokens":8192,
+ "compat":{"supportsDeveloperRole":false,"supportsReasoningEffort":false}}]}
+```
+**两个必踩的坑(来自「Silent Failures」实战复盘)**:
+- **用 `openai-completions` 不要用 `openai-responses`**:Ollama 等非 OpenAI 原生 provider 必须显式指定 adapter,否则静默失败。
+- **`compat` 必须显式写,别依赖自动检测**:`supportsDeveloperRole` / `supportsReasoningEffort` 错配会导致 agent 行为异常但不报错。
+- **agent 级配置也要同步**:`~/.openclaw/agents/{agentId}/agent/models.json` 与全局 `~/.openclaw/openclaw.json` 都要配,否则「silently fails」。
+- **本地凭证约定**:`apiKey: "ollama-local"` 这类非密标记,当 `baseUrl` 解析到 loopback / 私有 LAN / `.local` / 裸主机名时,OpenClaw 视为合法本地凭证,不报缺 key。公网主机名必须用真值。
+
+([medium rogerio](https://medium.com/@rogerio.a.r/setting-up-a-private-local-llm-with-ollama-for-use-with-openclaw-a-tale-of-silent-failures-01cadfee717f)、[reddit LocalLLM](https://www.reddit.com/r/LocalLLM/comments/1qt148w/howto_point_openclaw_at_a_local_setup)、[docs local-models](https://docs.openclaw.ai/gateway/local-models))
+
+**3. LM Studio 路径(macOS GUI 友好)**
+LM Studio 用原生 `/api/v1/models` + `/api/v1/models/load` 做发现与自动加载,`/v1/chat/completions` 做推理。关键开关:`models.providers.lmstudio.params.preload: false` 让 LM Studio 自己管 JIT 加载/TTL/自动驱逐。`api_key` 任意非空串即可(LM Studio 本地不校验)。([docs lmstudio](https://docs.openclaw.ai/providers/lmstudio)、[lmstudio.ai](https://lmstudio.ai/docs/integrations/openclaw)、[masterprompting](https://masterprompting.net/blog/openclaw-with-lm-studio))
+
+**4. DeepSeek 一键(社区最常见本地模型)**
+`ollama launch openclaw --model deepseek-r1`,或环境变量 `OLLAMA_HOST` / `OLLAMA_MODEL`,或 `~/.openclaw/config.yaml` 写 `models.default: ollama/deepseek-r1:7b`。([apidog deepseek](https://apidog.com/blog/openclaw-deepseek-ai-assistant))
+
+**5. llama.cpp 自托管(macOS launchd,跑 Qwen3.5-9B-Q4)**
+TDS 实测给出完整的 `com.openclaw.llama-server.plist`,关键参数 `-c 64000`(上下文)/`-ngl 20`(GPU 层)/`--host 127.0.0.1 --port 8080`。Qwen3.5-9B 量化版 6-8GB RAM 即可,16GB 或 24GB Mac 都能跑;长上下文是 agent 场景的硬约束,会阻止上 27B。([towardsdatascience](https://towardsdatascience.com/run-a-local-llm-with-openclaw-on-your-mac-mini))
+
+**6. fallback 机制(混合部署核心范式)**
+```yaml
+llm: active_provider: "lmstudio" active_model: "llama-3.1-8b-instruct"
+     fallback_provider: "anthropic"  # 本地报错或低置信度时回退云端
+```
+最佳实践:**本地模型省钱+隐私,云端模型兜底质量**。简单子任务用本地/便宜模型(Sonnet),推理密集用 Opus。([masterprompting](https://masterprompting.net/blog/openclaw-with-lm-studio)、[florian-darroman](https://florian-darroman.medium.com/openclaw-mac-mini-setup-the-step-by-step-guide-389337569f1a))
+
+> ⚠️ 本地模型安全降级提醒(官方 docs 明确):小模型或激进量化会**截断上下文 + 跳过 provider 侧安全过滤**,prompt-injection 防御变弱——这是部署本地模型时必须权衡的隐含成本。([docs local-models](https://docs.openclaw.ai/gateway/local-models))
+
+---
+
+#### 五、local-first 哲学在部署中的五个体现
+
+OpenClaw 的部署选型不是中性的技术决定,而是 **「the lobster way」(龙虾哲学:本地、硬壳、自包含)** 的工程化落地。它在部署层有五个可观测的体现:
+
+**1. 状态全落单目录 `~/.openclaw/`,备份=打包一个文件夹**
+```
+~/.openclaw/
+├── openclaw.json            # 主配置
+├── workspace/               # skills/prompts/memories(Markdown)
+├── credentials/             # 通道凭证
+├── agents/<agentId>/sessions/  # 会话数据
+├── memory/{agentId}.sqlite  # 记忆索引 + 向量(sqlite-vec)
+│   ├── *.sqlite-wal / *.sqlite-shm
+├── exec-approvals.json      # 命令执行白名单
+└── (openclaw.json)
+```
+备份一行命令:`tar -czvf openclaw-backup-$(date +%F).tar.gz ~/.openclaw`;恢复=解压 + `chown -R openclaw:openclaw` + `openclaw doctor --repair` 对齐服务。**没有数据库要起、没有连接串要配**——这是「download and run」的硬约束。([hivelocity](https://www.hivelocity.net/kb/self-hosting-openclaw-guide)、[zilliz](https://medium.com/@zilliz_learn/how-to-install-and-run-openclaw-previously-clawdbot-moltbot-on-mac-9cb6adb64eef))
+
+**2. SQLite 作为「状态机」而非单纯存储(PingCAP 架构拆解的核心洞见)**
+为什么不用专用向量库?——本地工具要求用户跑独立向量服务是「显著摩擦」。为什么不用 MySQL/PostgreSQL?——个人机上要起 `mysqld` 进程或配连接串违反零配置目标。**SQLite + sqlite-vec 扩展 + WAL 模式**精准命中「单文件、零运维、进程内」的本地-first 生态位。混合检索:向量相似度(语义)+ BM25(关键词)。([pingcap](https://www.pingcap.com/blog/local-first-rag-using-sqlite-ai-agent-memory-openclaw)、[ppaolo 架构](https://ppaolo.substack.com/p/openclaw-system-architecture-overview))
+
+**3. 记忆是人可读 Markdown,可手编辑「ghost's brain」**
+`MEMORY.md`(长期稳定事实,仅私有会话加载,群聊不读以防泄露)+ `memory/YYYY-MM-DD.md`(每日流水)。本地-first 纯粹形态:用户可直接编辑 agent 的上下文,「不向中央服务器发送一个字节」。([towardsai](https://towardsai.com/p/machine-learning/the-ghost-in-your-machine-why-openclaws-local-first-autonomy-beats-the-cloud-every-time)、[hindsight](https://hindsight.vectorize.io/blog/2026/03/06/adding-memory-to-openclaw-with-hindsight))
+
+**4. 环境变量三态覆盖,部署可移植**
+`OPENCLAW_HOME`(主目录)/ `OPENCLAW_STATE_DIR`(状态目录)/ `OPENCLAW_CONFIG_PATH`(配置路径)三级覆盖,daemon 从「服务配置 → 用户环境 → config 文件」继承环境变量。这让同一份代码能在 Mac/Linux/VPS/容器间无损迁移。([zilliz](https://medium.com/@zilliz_learn/how-to-install-and-run-openclaw-previously-clawdbot-moltbot-on-mac-9cb6adb64eef)、[mintlify daemon](https://openclaw-openclaw.mintlify.app/cli/daemon))
+
+**5. 执行白名单 `exec-approvals.json` 是 local-first 的安全补偿**
+本地全系统访问是双刃剑(broad tool access + autonomy = 「root access to your life」风险)。补偿机制:per-agent allowlist + exec approvals,node 向 Gateway 上报 `permissions` map,agent 调用前先查允许范围。这是 local-first 哲学「把控制权交还用户」的安全面落地。([fahey](https://medium.com/@fahey_james/openclaw-what-it-is-who-owns-it-and-why-it-suddenly-matters-00b8b43603e2)、[xaicontrol](https://xaicontrol.com/en/blog/openclaw-macos)、[docs nodes](https://docs.openclaw.ai/nodes))
+
+---
+
+#### 六、不同场景的部署选型最佳实践
+
+| 场景 | 推荐部署 | 理由 |
+|---|---|---|
+| 个人主力 AI 助手 + iMessage + Apple 系统集成 | **Mac Mini M4 16-24GB**(headless,菜单栏 App) | 唯一能力完全体;iMessage 硬约束;统一内存跑本地模型;5-7W 空载 7×24 |
+| 纯 API 模式(Claude/OpenAI)、只要 7×24 通道 | **任意 VPS 2核/2GB** 或旧 Lenovo headless Ubuntu | 推理不在本地,硬件几乎不重要;VPS 公网 IP 直连 Telegram/Discord |
+| 隐私优先、零 API 成本、离线 | **Mac Mini M4 Pro 48GB / RTX 4090 64GB** + Ollama/llama.cpp | 跑 13B-70B 本地模型;fallback 留云端兜底质量 |
+| 团队共享 / 多人经消息通道 | **VPS + systemd + linger + UFW + token 轮换** | 固定公网、多用户、卷持久化 |
+| 非技术用户、零配置 | **OpenClaw Easy 桌面 app**(Electron,macOS DMG / Windows EXE) | 无终端无配置;扫码 60 秒连 WhatsApp;内置 Ollama 100% 离线;自更新 |
+| Windows 用户 | **WSL2 + systemd=true** 或**原生 Hub app** | WSL2 文件须放 `~` 不放 `/mnt/c`;关机杀进程需开机启动 distro |
+| 多机协同(agent 在别处执行命令) | **Gateway 在 Mac + Node Host 在 Linux/远程** | Node 是外设不是 Gateway;消息落 Gateway 不落 Node;exec approvals 限权 |
+
+([openclaw-easy](https://github.com/openclaw-easy/openclaw-easy-desktop)、[danubedata](https://danubedata.ro/blog/self-host-openclaw-vps-ai-assistant-2026)、[mrprompts](https://mrprompts.substack.com/p/openclaw-on-windows-the-complete)、[docs nodes](https://docs.openclaw.ai/nodes))
+
+---
+
+#### 七、可复用范式(跨场景迁移的 5 条)
+
+1. **「能力阶梯选平台」而非「平台选能力」**:先枚举你要的能力(iMessage?本地 70B?7×24?),再倒推平台。macOS=完全体,Linux/VPS=Gateway 子集,Windows=WSL2 或 Hub。
+2. **daemon 三平台自适应是部署可移植的根**:`--install-daemon` 一条命令,平台差异被吸收进 LaunchAgent/systemd/Task Scheduler 三套生成器。自建服务时务必复制其 `After=network-online.target` + `Restart=always` 语义。
+3. **本地模型即 Provider 插件**:Ollama/LM Studio/vLLM 与 Anthropic 同构,统一走 `models.providers.<id>`。混合部署用 `fallback_provider` 做「本地省钱+云端兜底」分层。
+4. **状态单目录 + SQLite 状态机**:任何自托管 agent 框架都可借鉴——`~/.app/` 单目录 + SQLite WAL + Markdown 记忆,实现「download and run」+ 一行 tar 备份。
+5. **local-first 的安全补偿 = exec approvals + permissions map**:全系统访问必须配白名单与权限上报,否则 autonomy 反噬。这是 local-first 落地生产的安全边界范式。
+
+---
+
+#### 信源
+
+- 官方文档: [docs.openclaw.ai/install](https://docs.openclaw.ai/install) · [getting-started](https://docs.openclaw.ai/start/getting-started) · [local-models](https://docs.openclaw.ai/gateway/local-models) · [model-providers](https://docs.openclaw.ai/concepts/model-providers) · [providers/lmstudio](https://docs.openclaw.ai/providers/lmstudio) · [platforms/linux](https://docs.openclaw.ai/platforms/linux) · [nodes](https://docs.openclaw.ai/nodes) · [cli/node](https://docs.openclaw.ai/cli/node)
+- Mintlify 镜像: [daemon](https://openclaw-openclaw.mintlify.app/cli/daemon) · [macOS App](https://openclaw-openclaw.mintlify.app/platforms/macos)
+- 官方仓库 issue: [#44406 iMessage macOS-only bottleneck](https://github.com/openclaw/openclaw/issues/44406) · [#19778 Menu Bar Controller](https://github.com/openclaw/openclaw/issues/19778)
+- 社区桌面 app: [openclaw-easy/openclaw-easy-desktop](https://github.com/openclaw-easy/openclaw-easy-desktop)
+- Mac Mini 实战: [ai.cc](https://www.ai.cc/blogs/how-i-set-up-openclaw-on-a-mac-mini) · [florian-darroman](https://florian-darroman.medium.com/openclaw-mac-mini-setup-the-step-by-step-guide-389337569f1a) · [gopenai](https://blog.gopenai.com/how-i-set-up-openclaw-on-a-mac-mini-f97d1531061e) · [sitepoint](https://www.sitepoint.com/how-to-set-up-openclaw-on-a-mac-mini) · [macly](https://macly.io/openclaw-mac-mini) · [alexhost](https://alexhost.com/faq/how-to-install-openclaw-on-macos) · [embertype](https://embertype.com/blog/how-to-set-up-openclaw-mac) · [zilliz](https://medium.com/@zilliz_learn/how-to-install-and-run-openclaw-previously-clawdbot-moltbot-on-mac-9cb6adb64eef) · [xaicontrol](https://xaicontrol.com/en/blog/openclaw-macos)
+- 本地 LLM: [towardsdatascience llama.cpp](https://towardsdatascience.com/run-a-local-llm-with-openclaw-on-your-mac-mini) · [rogerio silent-failures](https://medium.com/@rogerio.a.r/setting-up-a-private-local-llm-with-ollama-for-use-with-openclaw-a-tale-of-silent-failures-01cadfee717f) · [masterprompting LM Studio](https://masterprompting.net/blog/openclaw-with-lm-studio) · [lmstudio.ai](https://lmstudio.ai/docs/integrations/openclaw) · [apidog deepseek](https://apidog.com/blog/openclaw-deepseek-ai-assistant) · [reddit LocalLLM](https://www.reddit.com/r/LocalLLM/comments/1qt148w/howto_point_openclaw_at_a_local_setup)
+- VPS/7×24: [lumadock systemd](https://lumadock.com/tutorials/openclaw-systemd-discord-qwen-free-model) · [ramnode](https://www.ramnode.com/guides/openclaw) · [cybernews](https://cybernews.com/vps/how-to-deploy-openclaw-on-a-vps) · [muktharvortegix](https://medium.com/@muktharvortegix/how-to-set-up-openclaw-on-a-vps-your-24-7-ai-agent-in-2026-5d2cb7b5163b) · [danubedata](https://danubedata.ro/blog/self-host-openclaw-vps-ai-assistant-2026) · [centminmod isolated-vps](https://github.com/centminmod/explain-openclaw/blob/master/03-deploy/isolated-vps.md) · [hivelocity](https://www.hivelocity.net/kb/self-hosting-openclaw-guide)
+- Windows: [mrprompts WSL2](https://mrprompts.substack.com/p/openclaw-on-windows-the-complete)
+- iMessage/集成: [openclawai.io/imessage](https://openclawai.io/integrations/imessage) · [Tencent Cloud](https://www.tencentcloud.com/techpedia/139192)
+- 架构/哲学: [pingcap local-first RAG](https://www.pingcap.com/blog/local-first-rag-using-sqlite-ai-agent-memory-openclaw) · [towardsai local-first](https://towardsai.com/p/machine-learning/the-ghost-in-your-machine-why-openclaws-local-first-autonomy-beats-the-cloud-every-time) · [ppaolo 架构](https://ppaolo.substack.com/p/openclaw-system-architecture-overview) · [fahey](https://medium.com/@fahey_james/openclaw-what-it-is-who-owns-it-and-why-it-suddenly-matters-00b8b43603e2) · [hindsight memory](https://hindsight.vectorize.io/blog/2026/03/06/adding-memory-to-openclaw-with-hindsight) · [a-bots](https://a-bots.com/blog/openclaw)
+
+> 未取信源(命中 Tavily 用量上限,未能直接抓取,建议后续补取):arXiv 2603.27517 安全论文、SamurAIGPT/awesome-openclaw、mergisi/awesome-openclaw-agents。其中 arXiv 论文若涉及 prompt-injection / 沙箱评估,可与官方 docs「Security and sandboxing」+ 本节 exec-approvals 机制交叉印证。
+
+---
+
+## 十七、token 消耗与成本优化
+
+OpenClaw 自身开源免费,但所接入的 LLM 按 token 计费,且其 agentic 架构(系统指令+历史+工具 schema+skills+memory 每轮重打包)对 token 有显著放大效应。降本的核心思路是:**按任务复杂度分级匹配模型与推理预算、把"全量注入"改为"按需披露"、用本地/廉价模型吸收高频低智力负载、用 compaction+memory flush 控制上下文膨胀**。
+
+---
+
+#### 一、token 消耗全景:钱花在哪四块
+
+OpenClaw 单轮 prompt 由四部分装配而成,每一项都是可优化的成本源:
+
+1. **对话历史(input 主成本,占 70-85%)**:每次请求重发整段 chat history,长对话线性膨胀。这是最大的成本块,也是"新开会话/精确检索"能立省 60-95% 的根因。
+2. **工具 schema(每轮重发)**:工具定义随每轮请求重发。实测 `browser` 工具 9,812 字符(~2,453 tok)、`exec` 6,240 字符(~1,560 tok)。禁用未用工具可直接砍掉这块固定开销。
+3. **记忆 flush 与 bootstrap 读取**:
+   - 会话启动"作业"读 SOUL.md(~800 tok)、USER.md(~500 tok)、今日 memory(1-3K)、昨日 memory(1-3K)、MEMORY.md(仅主会话,1-2K)= **每新会话 4,000-10,000 tok**,且每次 fresh conversation 重复。
+   - memory flush 每次 ~500(系统提示)+ 2,000-5,000(模型思考+写入)tok,长对话触发 3-5 次 = **单次长对话 10,000-25,000 tok**。
+4. **compaction 摘要调用**:触发时一次 LLM 调用把旧消息压成 summary(约 1-2K tok),代价是一次额外的 summarize 推理。
+
+实测一轮 system prompt(run)可达 38,412 字符(~9,603 tok),其中 Project Context 23,901 字符(~5,976 tok);12 个 skills 的列表 2,184 字符(~546 tok)。`/context`、`/context list`、`/context detail`、`/context map` 是诊断 token 去向的一手命令。
+
+> 信源:https://help.apiyi.com/en/openclaw-save-tokens-input-context-control-targeted-editing-guide-en.html ; https://ai-coding.wiselychen.com/en/openclaw-architecture-deep-dive-context-memory-token-crusher ; https://docs.openclaw.ai/concepts/context
+
+---
+
+#### 二、thinkingLevel 分级:推理预算的"阀门"
+
+OpenClaw 把推理深度做成可分级开关,直接对应推理 token 预算:
+
+- **档位**:`off | minimal | low | medium | high | xhigh | adaptive | max | ultra`
+- **别名语义**(易记):`minimal`="think"、`low`="think hard"、`medium`="think harder"、`high`="ultrathink"(最大预算)、`xhigh`="ultrathink+"(仅 GPT-5.2/Codex)、`adaptive`=provider 自管理(Claude 4.6 默认)。
+- **解析优先级**:inline 指令(`/think:`)> 会话覆盖 > per-agent 默认(`agents.list[].thinkingDefault`)> 全局默认(`agents.defaults.thinkingDefault`)> 兜底(Claude 4.6→adaptive,其他可推理模型→low,其余→off)。
+- **省 token 机制**:thinking 模式可使 token 消耗飙升 **10-50x**。对格式化、文件搬运、文本替换等非推理任务关掉 thinking,是单点最高杠杆(10-50x)。
+- **按角色配档**(per-agent 思路):`reasoner`→high/xhigh、`main/chat`→low(快回复)、`butler/task`→off/minimal、`coder`→medium。多 agent 场景按角色分档,避免"一刀切 high 烧 token / 一刀切 low 智力不足"。
+- **命令**:`/think low|medium|high`、`/t <level>`、`/reasoning` 查看当前档、`/fast` 快速模式、`/think off` 关闭。会话级 `/think:medium` 仅当前会话生效,会话重置丢失(故建议落 config 默认)。
+
+> 信源:https://github.com/openclaw/openclaw/issues/1656 ;https://github.com/openclaw/openclaw/issues/21624 ;https://openclaw-kr.mintlify.app/tools/thinking ;https://docs.openclaw.ai/tools/thinking ;https://dreamsaicanbuy.com/blog/openclaw-tips-configuration-security
+
+---
+
+#### 三、memory flush:何时触发、成本多大、如何隔离付费
+
+memory flush 是 compaction 前的"静默 agentic turn",把持久事实写盘(`memory/YYYY-MM-DD.md`)以防 compaction 抹掉关键上下文。
+
+- **触发公式**:`flush 点 = 上下文窗口 - reserveTokensFloor - softThresholdTokens`。以 200K 上下文、`reserveTokensFloor=40000`、`softThresholdTokens=4000` 为例,在 **156,000 tok** 处触发。
+- **默认值陷阱**:`reserveTokensFloor` 默认 20K 偏紧,单次大工具输出可能瞬间越过阈值导致 flush 来不及跑;**40K 是实践起点**,读大文件/网页快照频繁的场景应再调高。
+- **成本**:每次 flush = 系统提示 ~500 tok + 模型思考+写入 2,000-5,000 tok;长对话 3-5 次 = 10,000-25,000 tok/长对话。
+- **关键隔离设计**:`memoryFlush.model` 可单独指定,且 **flush turn 不继承会话的 fallback chain**——这意味着"本地-only 的家务活"不会静默回落到付费对话模型。这是省钱的要害配置。
+- **静默交付**:用 `NO_REPLY`/`no_reply` 精确 silent token 抑制对用户输出(大小写不敏感,整段 payload 仅含该 token 时生效);`2026.1.10` 起对以 `NO_REPLY` 开头的 partial chunk 也抑制流式草稿,防止静默操作漏出半句。
+- **边界**:每 compaction 周期只跑一次(记在 `sessions.json`);仅 embedded 会话跑(CLI 后端跳过);workspace 只读(`workspaceAccess: "ro"/"none"`)时跳过。
+- **配置**:`agents.defaults.compaction.memoryFlush.{enabled, softThresholdTokens, systemPrompt, prompt, model}`。
+
+> 信源:https://docs.openclaw.ai/reference/session-management-compaction ;https://velvetshark.com/openclaw-memory-masterclass ;https://snowan.gitbook.io/study-notes/ai-blogs/openclaw-memory-system-deep-dive ;https://mem0.ai/blog/openclaw-memory-management-live-data-compaction-and-best-practices
+
+---
+
+#### 四、bootstrap 上限与截断:每行都按字符付费
+
+bootstrap 文件(SOUL.md/AGENTS.md/USER.md/IDENTITY.md/TOOLS.md/MEMORY.md/HEARTBEAT.md/BOOTSTRAP.md)每会话从盘读入上下文,是"每行都花钱"的固定成本。
+
+- **per-file 截断**:`bootstrapMaxChars` 默认 **20,000 字符/文件**。超限文件被静默截断(只看到前 20K 字符)。实测 TOOLS.md 常达 54,210 字符(~13,553 tok),被截到 20,962 字符(~5,241 tok)。
+- **聚合上限**:`bootstrapTotalMaxChars` 控制所有 bootstrap 文件合计上限。官方 docs 默认标 60,000 字符;社区与 masterclass 文档常引 **150,000 字符**(≈50K tok)——二者差异源于版本演进/统计口径,150K 是较常被引用的聚合上限。一旦命中,加载顺序靠后的文件被丢弃(今日 daily note 先于旧条目加载,故近期上下文存活)。
+- **daily notes 窗口**:仅今日+昨日 daily note 自动加载;三天前的内容除非显式 `memory_search` 检索否则不在上下文。
+- **截断告警**:`bootstrapPromptTruncationWarning`(`off|once|always`,默认 `always`)在 Project Context 下注入告警块。
+- **可复用范式**:"index first, fetch on-demand":基础会话只载核心系统提示+活动项目文件(~5,000 tok),需要历史决策时用语义检索只取相关片段(~500 tok)。对比 Bad(全量 MEMORY.md 20K+history 10K+tool docs 8K=38K tok/消息)vs Good(核心 2K+活动项目 3K=5K tok)= **7.6x 基线降幅**。
+- **诊断**:`/context list` 看每个文件 raw vs injected 大小及是否 TRUNCATED——"记忆没生效"问题多数由此一查即明。
+
+> 信源:https://docs.openclaw.ai/concepts/context ;https://velvetshark.com/openclaw-memory-masterclass ;https://mem0.ai/blog/openclaw-memory-management-live-data-compaction-and-best-practices
+
+---
+
+#### 五、Skills progressive disclosure:从"全量注入"到"描述先行"
+
+这是 OpenClaw 控 token 的核心架构决策之一,分两阶段理解:
+
+- **现状(已部分实现)**:context assembly 阶段**不注入每个 skill 的全文**,而是注入"紧凑清单"——仅 name+description+path。模型读到清单后,判定某 skill 相关时**按需读取 SKILL.md 全文**。这使基础 prompt 无论装多少 skill 都保持精简。实测 12 skills 清单仅 ~546 tok。
+- **遗留痛点(GitHub #39945)**:旧实现仍在 init 时把已装 skill 的全文注入,83+ skills 时发生截断(83 个中仅 41 个可见),且为永不触发的 skill 浪费 context。
+- **提案的三阶段 progressive disclosure**(借鉴 Microsoft Agent Framework):
+  - **Phase 1 - Advertise**:每 skill 仅注入 name+description(~100 tok/skill);
+  - **Phase 2 - Load**:`load_skill(name)` 工具按需拉取完整 SKILL.md;
+  - **Phase 3 - Fetch resources**:`read_skill_resource(skill, path)` 按需拉 `scripts/`、`references/`、`assets/`。
+- **省多少**:`~100 tok/skill 广告位 vs 全文前置`;83+ skills 全部可见(描述级);可扩展到 200+ skills 而无 context 退化;authoring 工作流不变(description 即触发条件)。
+- **可复用范式**:任何"能力清单型"系统都应走 advertise→load→fetch 三段式,避免能力数随规模线性吃掉 context。
+
+> 信源:https://github.com/openclaw/openclaw/issues/39945 ;https://bibek-poudel.medium.com/how-openclaw-works-understanding-ai-agents-through-a-real-architecture-5d59cc7a4764 ;https://medium.com/@martia_es/progressive-disclosure-the-technique-that-helps-control-context-and-tokens-in-ai-agents-8d6108b09289
+
+---
+
+#### 六、compaction:把无限长会话压回可控上下文
+
+- **触发**:接近上下文窗口上限(Claude 后端 200K)或收到 context-overflow 错误。
+- **两步序列**:Step1 pre-compaction memory flush(写盘)→ Step2 compaction(整段历史 summarize 后清空,summary 替代明细)。
+- **层级化("summarize summaries")**:二次 compaction 时 summary 包含上一轮 summary,形成层级摘要。
+- **cut point 策略**:`findCutPoint()` 从后向前走,保留 ~20K 近期 token;`generateSummary()` 调 LLM 压缩旧消息。openclaw-mini 实测:保留 16K(系统提示+工具+overhead)+ 20K 近期消息,总超 ~184K 时 compact;压完落到 ~20K+summary(1-2K),给出 ~160K headroom ≈ 40-80 轮主动编码;示例 Turn11 触发,150K→35K(140,000 tok 被摘要)。
+- **成本权衡**:compaction 本身花一次 summarize 调用,但换来后续每轮 input 从 150K 级降回 35K 级——长会话净省远大于那次摘要成本。
+
+> 信源:https://systemdesigner.medium.com/building-openclaw-from-scratch-part-5-conversation-compaction-c467e41f926f ;https://mem0.ai/blog/openclaw-memory-management-live-data-compaction-and-best-practices ;https://docs.openclaw.ai/reference/session-management-compaction
+
+---
+
+#### 七、本地 vs 云模型成本对比 + 多模型路由降级
+
+**月度成本对比(中等用量 ~50 query/day)**:
+
+| 方案 | LLM API | 基础设施 | 月总成本 |
+|---|---|---|---|
+| 纯云(GPT/Gemini Pro) | $60-120 | $5-10 VPS | $65-130 |
+| OpenRouter(Gemini Flash/Llama) | $10-30 | $5-10 VPS | $15-40 |
+| 纯本地(Ollama 32B+) | $0 | $5-15(VPS+电) | $5-15 |
+| 混合(本地默认+云兜底复杂) | $10-25 | $5-10 VPS | $15-35 |
+
+混合方案相对纯云可砍 **70-85%**。云模型按用量:轻度 $5-20/月、活跃(频繁 heartbeat+大 prompt)$50-150/月、未优化重度用户账单可达数千。
+
+**本地模型硬约束**:OpenClaw 需至少 64K 上下文,可靠阈值 **32B+、24GB VRAM**;14B 仅能做简单自动化、多步 agent 任务边缘。本地砍掉 per-token 成本但牺牲推理质量与长上下文,换来完全数据本地性与可预测成本。
+
+**多模型路由降级(最高杠杆之一,50-80% 降幅)**:核心思想——不是每个任务都配最贵模型。按角色拆分 primary/heartbeat/subagent:
+
+```json
+{ "agent": { "model": {
+  "primary": "anthropic/claude-opus-4-6",
+  "heartbeat": "anthropic/claude-haiku-4-5",
+  "subagent": "anthropic/claude-sonnet-4-6" } } }
+```
+
+heartbeat 跑 Haiku($1/$5)而非 Opus($5/$25);subagent 用 Sonnet($3/$15);仅主交互用 Opus。实测:Light $200→$70(省 65%)、Power $943→$347(省 ~$600)、Heavy $2750→$1000(省 $1700+)。
+
+**per-agent 覆盖**(混合范式):`defaults.model=ollama/qwen3:32b` + `overrides.coder=claude-sonnet` + `overrides.researcher=gemini-2.0-flash`。默认走免费本地,专精 agent 按需升级。
+
+**fallback chain 设计**:主模型失败时 auth profile 轮换 + 指数退避;**跨 provider 兜底**(如 Anthropic 限流时第一 fallback 走 GPT-5.2 而非同家 Sonnet)保证可用性。配置在 `~/.openclaw/openclaw.json`(旧 Clawdbot 包为 `~/.clawdbot/clawdbot.json`),`/model` 可运行时切换。廉价模型须确保"低档失败不回落到主贵模型",否则省钱失效。
+
+> 信源:https://clawnest.ai/blog/openclaw-ollama-local-models-guide ;https://www.betterclaw.io/blog/openclaw-model-routing ;https://velvetshark.com/openclaw-multi-model-routing ;https://milvusio/blog/openclaw-formerly-clawdbot-moltbot-explained-a-complete-guide-to-the-autonomous-ai-agent.md ;https://blog.salad.com/reduce-your-openclaw-llm-costs-saladcloud-guide ;https://yu-wenhao.com/en/blog/2026-02-01-openclaw-deploy-cost-guide
+
+---
+
+#### 八、降本增效最佳实践清单(可复用范式)
+
+1. **路由分级**:primary/heartbeat/subagent 三档分模型;heartbeat/cron 走最便宜模型;复杂推理才升 Opus级。50-80% 立省。
+2. **heartbeat 纪律**:interval 调到最小有用频率(5min→30-60min);批量检查(邮件+日历+任务一次 turn);监控类(打印机/服务器/队列)用 **cron+shell 脚本零 token**,仅需关注时才唤模型;heartbeat/cron 设 `sessionTarget:"isolated"` 防污染主会话;误配 heartbeat 可 $50+/天空转。
+3. **thinking 按需**:非推理任务 `/think off`(10-50x);per-agent 分档(reasoner high / main low / butler off)。
+4. **新任务新会话**:避免历史膨胀(60-80%);`/status` 看上下文>60% 时主动 `/new`/`/reset`;大工作流完成后开新会话。
+5. **精确检索替代全量喂文件**:指定行号、`@file` 引用、QMD 语义搜索、AGENTS.md 定义结构;120K→4K tok 同任务省 96%。
+6. **prompt caching**:用原生 Anthropic `/v1/messages`(非 OpenAI 兼容 `/v1/chat/completions`)才能命中,省 input 80-90%。
+7. **memory 卫生**:MEMORY.md 保持 <80 行精炼;daily 文件 >5KB 则摘要;daily log 仅留 7 天;每周检查;启动读取压到 <5,000 tok。HEARTBEAT.md <50 行(每次 cron 都读,token 随行数线性增长)。
+8. **flush 隔离**:`memoryFlush.model` 指定本地/廉价模型且不继承 fallback chain,家务活不回落付费模型;`reserveTokensFloor` 提到 40K 防 flush 来不及跑。
+9. **progressive disclosure 思维**:能力清单只放 description(~100 tok),全文按需 load;bootstrap 走"index first, fetch on-demand",基线可降 7.6x。
+10. **工具瘦身**:禁用未用工具(砍每轮 schema 重发固定开销);防 full tool schema 每轮重发。
+11. **三阶段优化路径**:5 分钟级(新会话+关 thinking,省 50%)→ 30 分钟级(精确 prompt+限 context,省 80%)→ 长期(QMD+caching,省 97%)。
+
+> 信源:https://help.apiyi.com/en/openclaw-save-tokens-input-context-control-targeted-editing-guide-en.html ;https://www.reddit.com/r/openclaw/comments/1r78fy6/i_asked_opus_46_to_give_me_a_guide_to_reduce ;https://www.reddit.com/r/openclaw/comments/1rcl9oz/how_to_drastically_reduce_token_usage_in_openclaw
+
+---
+
+#### 可复用范式提炼
+
+- **"分级匹配"范式**:模型档位 × 推理档位 × 角色三轴正交,低智力高频负载用最便宜组合,复杂负载才升档——这是 agentic 系统降本的通用骨架。
+- **"按需披露"范式**: advertise(描述)→ load(全文)→ fetch(资源)三段式,把"装多少能力"与"基础 prompt 多大"解耦,适用于 skills、memory、工具文档任何"清单型"上下文。
+- **"写盘兜底"范式**:阈值前静默 flush + compaction 摘要 + bootstrap 重载三层防线,既控上下文膨胀又不丢关键事实;flush turn 独立模型且不继承 fallback,是"家务活零付费"的关键设计。
+- **"零 token 旁路"范式**:能用 cron+shell+regex+静态规则解决的监测类任务绝不过 LLM,模型只在"需要智力判断"时被唤起。
+
+> 备注:部分数值(如 `bootstrapTotalMaxChars` 60K vs 150K、各模型单价)在不同版本与统计口径间存在差异,已标注来源;以官方 docs.openclaw.ai 与 `openclaw.json` 实际配置为准。
+
+---
+
+## 十八、computer use 工程化的机制
+
+OpenClaw 把 "computer use" 工程化为**三条正交但可组合的执行通道**,而非单一原语:
+
+1. **浏览器自动化通道** — 托管一个 agent 专属的隔离 Chrome/Brave/Edge profile,**底层用 Playwright 驱动**;对"真实登录态浏览器"则回退到 **CDP(Chrome DevTools Protocol)/ Chrome DevTools MCP / Chrome 扩展**三种 attach 方式。是 Playwright + 原生 CDP 的**混合架构**,不是二选一。
+2. **桌面/屏幕 computer use 通道** — 内置 `computer` 工具,动作集**直接对齐 Anthropic computer-use actions**(仅未暴露 `computer_20251124` 的 zoom),由 vision 模型驱动,经单一危险节点命令 `computer.act` 落到配对的 macOS 节点上,**进程内嵌入 Peekaboo 服务 + 窄 CoreGraphics 原语**实现(无额外进程)。
+3. **文件/终端 exec 通道** — `exec`/`read`/`write`/`edit`/`apply_patch`/`process`,由 exec policy(allowlist)+ 沙箱(Docker/SSH/OpenShell)+ 危险命令武装(arming)三重控制。
+
+三条通道统一收口于 **Gateway–Node–Host 分层**:`node.invoke` 是 Node-Host 上的特权执行接口,`computer.act`、沙箱 exec、elevated exec 都经它下发。安全论文(arXiv:2603.27517)对 470 条 advisory 的分类证实了这一分层:系统轴 = {exec policy, gateway, channel, sandbox, browser, plugin, agent/prompt},漏洞沿"逐层信任"而非"统一策略边界"堆积,导致跨层组合攻击对局部修复免疫。
+
+> 信源说明:Tavily search/extract 本轮均超配额不可用,以下结论改用 macOS Scrape 直取一手源(arXiv HTML、GitHub raw README、docs.openclaw.ai 官方文档)交叉验证,均带 URL。
+
+---
+
+### 一、浏览器自动化:Playwright + CDP 混合工程化
+
+#### 1.1 不是"Playwright 还是原生",而是按 profile 分流
+
+OpenClaw 的 `browser` 工具把浏览器抽象成**三种 profile**,各自走不同驱动(docs.openclaw.ai/tools/browser):
+
+| Profile | 驱动 | 适用场景 | 关键特性 |
+|---|---|---|---|
+| `openclaw`(默认,橙色) | **Playwright** 托管 | agent 专属隔离浏览器,不碰个人 profile | 文档原文:"Playwright-backed profiles save direct attachment navigations…Playwright-backed agent actions return a `downloads` array";独立 user-data-dir,可从系统 Chrome 拷贝选定 cookies(不拷 local storage/IndexedDB) |
+| `user` | **Chrome DevTools MCP** attach | 用户在场,attach 到真实登录态 Chrome | 首次 attach Chrome 弹 "Allow remote debugging?" 阻断提示,需人在机前 |
+| `chrome` | **Chrome 扩展**驱动 | 用户离场(Telegram/WhatsApp 触发),attach 真实登录态 Chrome | 通过扩展驱动 tab,不经 remote-debugging 端口,无 attach 提示 |
+
+**可复用范式**:把"隔离自动化浏览器"与"复用登录态浏览器"分成不同 profile + 不同驱动,既保证 agent 不会污染个人会话,又能在离场场景复用已登录态——这比单一 Playwright 或单一 CDP 更贴合"个人 assistant"定位。
+
+#### 1.2 控制面:loopback 控制服务 + 端口族派生
+
+- 浏览器控制服务**只绑 loopback**,端口由 `gateway.port` 派生(默认 `18791` = gateway+2;gateway 默认 18789,与 README 一致)。
+- 本地 `openclaw` profile 的 `cdpPort`/`cdpUrl` 从控制端口+9 起的区间自动分配(默认 `18800`–`18899`)。
+- 重复托管 Chrome 启动/就绪失败 → **按 profile 熔断**(短暂停止新启动尝试,而非每次 browser 调用都拉起 Chromium)。
+- tab 所有权用**原生 CDP target + 浏览器身份**记入共享 SQLite,跨 Gateway 重启仍可被 `/new` 等会话生命周期清理;Chrome MCP 的 target handle 是进程本地,冷启动后只能等生命周期清理(避免误扫无法归因的活动)。
+
+#### 1.3 浏览器安全边界(工程化要点)
+
+- **SSRF 策略**内建:`browser.ssrfPolicy` 支持 `dangerouslyAllowPrivateNetwork`、`hostnameAllowlist`、`allowedHostnames`,默认拒绝私网。
+- **JS 执行开关**:`evaluateEnabled`(默认 true)控制 `act:evaluate`(任意 JS 执行),可整体关闭降权。
+- **截图注入防护**:主模型为纯文本(无 vision)时,截图交给配置的 image 模型转文字描述,再用 `wrapExternalContent`(prompt injection guard)包裹后以 text block 返回——**截图是私有 tool result,不自动发到聊天通道**。
+- **snapshot 模式**:`snapshotDefaults.mode: "efficient"` 控制 DOM 快照提取成本。
+- **登录/2FA/captcha 阻塞**:bundled `browser-automation` skill 教 agent "snapshot before acting,resnapshot after UI changes,recover stale refs once,把登录/2FA/captcha 上报为人工动作而非硬猜"。
+
+#### 1.4 沙箱内浏览器(sandboxed browser)
+
+当沙箱开启时,浏览器也可跑进沙箱(docs.openclaw.ai/gateway/sandboxing):
+
+- 沙箱浏览器容器**自动拉起并确保 CDP 可达**(`autoStart` 默认 true,`autoStartTimeoutMs` 12s)。
+- 用**专用 Docker 网络 `openclaw-sandbox-browser`**(而非全局 `bridge`)。
+- `cdpSourceRange` 用 **CIDR allowlist 限制容器边缘 CDP 入站**(如 `172.21.0.1/32`)。
+- **noVNC 观察口默认密码保护**:OpenClaw 发短期 token URL,密码放在 **URL fragment(不是 query string,不进 header 日志)**。
+- `allowHostControl` 默认 false(禁止沙箱会话显式打宿主浏览器);`target:"custom"` 受 `allowedControlUrls/Hosts/Ports` 三重 allowlist 门控。
+- SSH / OpenShell 后端**不支持**沙箱浏览器(仅 Docker 后端支持)。
+
+---
+
+### 二、桌面/屏幕 computer use:内置 `computer` 工具
+
+这是最接近"Anthropic computer use"语义的通道(docs.openclaw.ai/nodes/computer-use)。
+
+#### 2.1 动作集直接对齐 Anthropic computer use
+
+> "The action set follows the core Anthropic computer-use actions; optional `computer_20251124` zoom is not exposed."
+
+即 OpenClaw 的 `computer` 工具**复用 Anthropic computer-use 的动作契约**(screenshot / pointer / scroll / keyboard / wait),但**执行后端是 OpenClaw 自己的**,且 provider 无关:"A vision-capable model drives it"——任何 vision 模型都能驱动,不绑死 Claude。
+
+动作清单:读 `screenshot`;指针 `left/right/middle_click`、`double/triple_click`、`mouse_move`、`left_click_drag`(带 `startCoordinate`)、`left_mouse_down/up`;滚动 `scroll`(`up|down|left|right` + wheel ticks);键盘 `type`/`key`(组合键如 `cmd+shift+t`)/`hold_key`;节拍 `wait`。修饰键随 click/scroll 的 `text` 字段携带。每次输入动作后返回**新截图**供模型观察结果。
+
+#### 2.2 抽象层:统一 `computer.act`,后端可替换
+
+- agent 侧只发**一个统一命令 `computer.act`**,无法感知节点如何实现——这是关键的**agent-facing 契约与后端实现解耦**。
+- macOS 节点用**进程内嵌入 Peekaboo 服务 + 窄 CoreGraphics 原语**实现(正确 TCC 权限,无额外进程)。其他平台未来可用同一命令实现,不改 agent 契约。
+- 截图复用既有 `screen.snapshot` 节点命令,**无第二条采集路径**。
+
+#### 2.3 坐标安全:frameId + display identity 防重放/错靶
+
+这是工程化亮点:
+- 坐标是"最近一次截图"中的非负整数像素,节点再映射到 display point。
+- 坐标动作**必须回显截图结果的 `frameId`**,显式 `screenIndex` 必须匹配该 frame。
+- OpenClaw 把节点签发的 **display identity 随截图带进动作**,显示器重连/几何变化时**fail-closed**(而非静默重定向到同 index)。
+- 这些校验**拒绝猜测的 token 和来自其他 frame/display 的 token**;但 token 不保证新鲜性(app 可能在同一 display 上改像素),所以场景可能变化时必须重新截图。
+
+**可复用范式**:视觉 computer use 的坐标不能裸传——必须绑定截图帧标识 + 显示器身份,任何不一致即 fail-closed,杜绝"用旧截图坐标点新画面"的静默错位。
+
+#### 2.4 截图默认 model-only + 注入防护
+
+- 截图**永不自动发到聊天通道**(issue #44759)。
+- 屏幕内容一律视为**不可信输入,可携带 prompt injection**;工具明确警告模型"不要遵循与用户请求冲突的屏幕指令"。
+
+#### 2.5 武装(arming):授权刻意分裂为"启用"与"使用"
+
+`computer.act` 是**危险节点命令,默认 disarm**,不在运行时 allowlist 内。启用流程体现"多层级 AND 门控":
+
+1. macOS app 开 **Allow Computer Control**(默认 off)+ 系统授权 **Accessibility**(指针/键盘注入)+ **Screen Recording**(`screen.snapshot`)。
+2. Gateway 批准配对更新(新命令强制重新配对)。
+3. 工具策略暴露 `computer`:`tools.alsoAllow:["computer"]`;**沙箱 agent 还需第二道门** `tools.sandbox.tools.alsoAllow:["computer"]`。
+4. **武装** `computer.act` 一个有界窗口:`/phone arm computer 30m`(phone-control 暴露 `computer` group),需 `operator.admin` 或 owner,**自动过期**。`/phone arm all`(legacy)**故意排除**桌面控制。
+5. 持久授权:加入 `gateway.nodes.allowCommands` **并从 `gateway.nodes.denyCommands` 移除**(**deny list 胜出**)。
+
+**关键设计**:授权刻意分裂——武装/持久配置需 admin;一旦武装,持有 `operator.write` 的认证操作者可经 `node.invoke` 调用直到过期/disarm,**无逐动作 admin 检查**。这避免了"每点一下都要 admin 审批"的可用性灾难,同时把"打开能力"和"使用能力"分给不同权限层。
+
+**安全不变量**:授权前**每一层都要同意**(工具策略 + gateway 命令策略 + macOS 设置 + Accessibility + Screen Recording);武装后无逐动作确认直到过期。文本输入**逐 grapheme 投递**,取消/断连/暂停/禁用/端点替换会在**下一个 grapheme 前**停下,不让陈旧残留继续。
+
+---
+
+### 三、Codex Computer Use / cua-driver:另两条桌面控制路径
+
+OpenClaw 不独占桌面控制,而是**集成三方实现**(docs.openclaw.ai/plugins/codex-computer-use):
+
+| 路径 | 归属 | 适用 |
+|---|---|---|
+| 内置 `computer` 工具(node-backed) | OpenClaw 自有 | 同一 agent 契约要控制配对 Mac,无论 agent 跑在 Gateway 还是别的 node |
+| **Codex Computer Use** | Codex 原生 MCP 插件 | Codex app-server 应拥有本地 MCP 安装/权限/原生工具调用(Codex-mode turn) |
+| **cua-driver MCP** | TryCua 上游驱动 | OpenClaw 托管运行时直接调 TryCua 驱动,保留上游 MCP 工具面 |
+
+要点:
+- **OpenClaw 不 vendor 桌面 app、不亲自执行桌面动作、不绕过 Codex 权限**。bundled `codex` 插件只"准备"Codex app-server:启用插件支持、找/装 Computer Use 插件、校验 `computer-use` MCP server 可用,然后让 Codex 在 Codex-mode turn 内拥有原生 MCP 工具调用。
+- **直接 cua-driver**:`openclaw mcp set cua-driver '{"command":"cua-driver","args":["mcp"]}'` 注册为普通 OpenClaw MCP server。CUA 驱动 macOS 专用,仍需本地 Accessibility + Screen Recording;OpenClaw 不装 cua-driver、不授权、不绕过其安全模型。
+- **OpenClaw.app Peekaboo 集成独立**:macOS app 托管 PeekabooBridge socket,让 `peekaboo` CLI 复用 app 的 Accessibility/Screen Recording 授权;该桥**不**装/代理 Codex Computer Use,Codex Computer Use 也**不**经 PeekabooBridge。
+
+**可复用范式**:对高危能力(桌面控制),框架层只做"编排与权限门控",把"能力实现与 OS 权限持有"留给专门组件(app bundle / 上游驱动 / MCP server),避免框架自身变成权限怪兽。
+
+---
+
+### 四、工具沙箱机制:三正交维度 + 三后端
+
+#### 4.1 核心模型(docs.openclaw.ai/gateway/sandboxing)
+
+> "OpenClaw can run tool execution inside a sandbox backend to reduce blast radius. … The Gateway process always stays on the host; only tool execution moves into the sandbox when enabled."
+
+- **默认关闭**(`agents.defaults.sandbox.mode:"off"`)。文档坦承"这不是完美安全边界,但能在模型犯蠢时实质性限制文件系统与进程访问"。
+- 三个**正交**设置:
+  - **Mode**:`off` / `non-main`(默认推荐;沙箱所有非 main 会话)/ `all`。main 会话 key 固定 `agent:<agentId>:main`(不可配),群组/频道会话永远算 non-main → 永远沙箱。
+  - **Scope**:`agent`(每 agent 一容器)/ `session`(每会话一容器)/ `shared`(所有沙箱会话共享一容器)。
+  - **Backend**:`docker`(默认)/ `ssh` / `openshell`。
+
+#### 4.2 Docker 后端默认姿态(可直接抄)
+
+`network:"none"`(无出网)、`readOnlyRoot:true`、`capDrop:["ALL"]`、镜像 `openclaw-sandbox:bookworm-slim`,经 `/var/run/docker.sock` 编排,隔离来自 Docker namespaces。GPU 透传走 `--gpus`。
+
+**DooD(Docker-out-of-Docker)约束**(Gateway 自身容器化时的坑):
+- `openclaw.json` 的 `workspace` 必须是**宿主绝对路径**(Docker daemon 按 host 命名空间解析路径)。
+- Gateway 容器需**同形 volume map**(`-v /home/u/.openclaw:/home/u/.openclaw`),否则心跳/桥文件写失败报 `EACCES`。
+- **禁止把宿主 Docker socket 挂进 agent 沙箱容器或自定义 Codex 沙箱**。
+- 沙箱激活时,OpenClaw 关闭 Codex app-server 原生 Code Mode、user MCP server、app-backed 插件执行(它们跑在 Gateway-host app-server 进程而非沙箱后端),除非沙箱工具策略显式暴露并启用实验性 sandbox exec-server 路径;shell 改走 `sandbox_exec`/`sandbox_process`。
+- Ubuntu/AppArmor + Docker 沙箱下,Codex `workspace-write` shell 需非特权 user namespace,`network:"none"` 时还需非特权网络 namespace;失败症状 `bwrap: setting up uid map: Permission denied`。`openclaw doctor` 可探测;缓解用授予 namespace 的 AppArmor profile,宿主级 `kernel.apparmor_restrict_unprivileged_userns=0` 是有安全代价的兜底。
+
+#### 4.3 工作区访问分级
+
+`workspaceAccess`:`none`(默认,隔离工作区在 `~/.openclaw/sandboxes`)/ `ro`(只读挂 `/agent`,禁写)/ `rw`(读写挂 `/workspace`)。多文件夹用 Docker bind mount `host:container:ro|rw`,且需 `dangerouslyAllowExternal*(因源在 agent workspace 外)。
+
+#### 4.4 沙箱外:elevated exec 逃生口
+
+`tools.elevated` 显式允许的工具**绕过沙箱**跑在逃逸路径(`gateway` 默认,或 exec target 为 node 时走 `node`)。沙箱关闭时 elevated 无意义(exec 本就跑宿主)。这给了"沙箱内只读 + 个别命令提权"的工程化逃生口,而非全有全无。
+
+#### 4.5 论文视角的沙箱弱点(arXiv:2603.27517)
+
+- §5.5 工具分发面:**Sandbox Isolation 17 条 advisory**;§5.7 "Container Boundary & Host OS Interface";§3.1 "Container Boundary as a high-concern surface"。
+- 防御建议 §6.4:**Sandbox: Configuration Integrity at Creation Time**——容器配置在创建时锁定,运行时不可被(被攻陷的)agent 改写。
+
+---
+
+### 五、权限控制与 exec policy:词法 allowlist 的根本性裂缝
+
+#### 5.1 工具策略在 model call 之前强制(docs.openclaw.ai/tools)
+
+> "Tool policy is enforced before the model call. If policy removes a tool, the model does not receive that tool's schema for the turn."
+
+工具可见性受全局配置、per-agent 配置、频道策略、provider 限制、**沙箱状态**、channel/runtime 策略、插件可用性共同过滤。`tools.profile:"coding"` 默认**不含** `browser` 和 `computer`,需 `tools.alsoAllow` 显式加;沙箱 agent 还要 `tools.sandbox.tools.alsoAllow` 第二道门。
+
+三层访问控制分工有专页:`Sandbox vs tool policy vs elevated` 说清"哪层管文件/进程访问"。
+
+#### 5.2 exec allowlist 的词法模型崩塌(论文核心发现)
+
+exec allowlist 是框架**主命令过滤机制**,依赖**封闭世界假设**:命令身份可由词法解析恢复。论文用 patch-diff 证据证伪,给出三条**独立且不重叠**的绕过(§5.6):
+
+1. **行续行绕过**(`\` 续行把命令切碎,词法器认不出真实命令)。
+2. **busybox/toybox 多路复用绕过**(一个二进制根据 argv[0] 表现成不同命令,allowlist 按 basename 匹配失效)。
+3. **GNU 长选项缩写绕过**(GNU 工具接受 `--pre` 代替 `--prefix`,allowlist 按完整串匹配失效)。
+
+**根因(§5.6.4):词法模型 vs 语义现实**。防御 §6.3:**语义命令解释**——不能靠字符串匹配,要靠语义解析/真实命令身份恢复。
+
+**可复用范式**:任何"命令 allowlist"都不能建立在词法/字符串匹配上;shell 的别名/续行/多路复用/选项缩写会让"看上去在白名单"的命令实际执行任意行为。要做语义级命令识别或直接放弃 allowlist 改用能力沙箱。
+
+#### 5.3 危险命令的 disarm-by-default + arming 模式
+
+`computer.act` 是内置危险节点命令,**默认不在运行时 allowlist**;同理 exec 审批、elevated、`/phone arm` 都是"默认关、显式武装、自动过期、deny 优先"模式。这是一套贯穿全框架的**最小权限 + 时间窗授权**范式。
+
+---
+
+### 六、MCP 如何扩展能力
+
+#### 6.1 三层扩展面:Tools / Skills / Plugins(docs.openclaw.ai/tools)
+
+- **Tool**:类型化函数(`exec`/`browser`/`web_search`/`message`/`image_generate`…),作为结构化函数定义发给模型。
+- **Skill**:`SKILL.md` 指令包(YAML frontmatter + markdown body),进 agent prompt;教 agent "何时用哪个工具、走什么循环"。遵循 **AgentSkills 规范**(agentskills.io)。
+- **Plugin**:加运行时能力——工具、provider、channel、hook、打包 skill。插件通过 `api.registerTool(...)` + manifest `contracts.tools` 注册工具。
+
+#### 6.2 MCP 注册与集成
+
+- OpenClaw 有 **MCP registry**:`openclaw mcp set <name> '<stdio-config>'` 直接注册 MCP server(如 cua-driver)。沙箱激活时"user MCP server"会被关停(因跑在 Gateway-host app-server 而非沙箱后端)。
+- 插件可自带 skill:browser 插件就内置 `browser-automation` skill。
+- **ClawHub**(clawhub.ai)是公开 skill 注册表:`openclaw skills install @owner/<slug>`,`openclaw skills verify` 校验 `clawhub.skill.verify.v1` 信任信封,集成 VirusTotal/ClawScan/静态分析,验证失败非零退出。
+- Skill 加载优先级(workspace > project-agent > personal-agent > managed > bundled > extra/plugin),同名高优先级覆盖;路径遏制(realpath 必须留在配置根内,除非显式信任 symlink target);`security.installPolicy` 可在安装前跑可信本地策略命令,fail-closed。
+- 秘密注入范围:`skills.entries.*.env`/`apiKey` 只注进**该 turn 的宿主进程**,不进沙箱。
+
+#### 6.3 论文视角:skill 分发面是 exec 之外的攻击面
+
+论文 §5.2 + 摘要第三发现:**恶意 skill 经 plugin channel 分发,在 LLM 上下文内执行两阶段 dropper,完全绕过 exec 管道**——证明 skill 分发面是**任何运行时策略原语之外**的攻击向量。典型案例 `yahoofinance` skill。防御 §6.5:**Plugin/Skill Distribution: Supply-Chain Integrity**;§6.6 **Context Provenance as a Security Boundary**(上下文来源作为安全边界)。
+
+**可复用范式**:skill/plugin 是"指令级代码",其威胁模型等同于供应链投毒——不能只靠运行时 exec 沙箱挡,必须从分发(签名/校验/扫描)、加载(路径遏制)、注入(prompt provenance)三段独立设防。
+
+---
+
+### 七、与 Anthropic computer use / Claude computer use 的关系
+
+1. **API 契约层对齐**:OpenClaw 内置 `computer` 工具的动作集"follows the core Anthropic computer-use actions",即**复用 Anthropic computer use 的工具 schema**(screenshot/pointer/keyboard/scroll/wait),仅未暴露 `computer_20251124` zoom。这让用惯 Claude computer use 的模型/提示词可直接迁移。
+2. **执行后端独立**:实现不调 Anthropic 参考实现,而是 macOS 节点进程内 Peekaboo + CoreGraphics;**provider 无关**(任何 vision 模型可驱动,不只 Claude)。OpenClaw 是"借 Anthropic 的动作语义,做自己的多后端执行"。
+3. **同时集成 OpenAI 侧**:Codex Computer Use 是 **Codex 原生 MCP 插件**(OpenAI 生态);cua-driver 是 TryCua 的独立驱动。OpenClaw 把 Anthropic 式、OpenAI Codex 式、TryCua 式三种桌面控制统一收口到自己的工具/MCP 注册体系。
+4. **安全语义一致**:截图 model-only、屏幕内容视为不可信输入(prompt injection)、坐标绑定 frameId/display identity——与 Anthropic 官方 computer use 安全指南同向(防间接注入、防屏幕指令劫持)。
+5. **架构差异**:Anthropic computer use 是"模型厂商提供的工具 + 参考容器";OpenClaw 是"自托管框架,把 computer use 作为 Gateway–Node–Host 上的一个 dangerous node command,套多层级 arming + 沙箱 + 工具策略"。OpenClaw 更接近"把 computer use 工程化进一个可自托管、多通道、强权限门控的 agent 运行时"。
+
+---
+
+### 八、安全的 computer use 工程化最佳实践(可复用范式汇总)
+
+1. **通道分离**:浏览器自动化(Playwright 托管 + CDP attach 三模式)、桌面 computer use(`computer.act` 统一契约 + 多后端)、exec/文件(沙箱 + allowlist)分成独立通道,各自安全姿态,避免一个突破口打穿全部。
+2. **agent-facing 契约与后端实现解耦**:agent 只发 `computer.act`,后端(macOS Peekaboo/未来其他平台)可替换——能力演进不动 agent 侧。
+3. **视觉坐标绑定帧标识 + 显示器身份,不一致即 fail-closed**;截图 model-only + 注入包裹。
+4. **最小权限 + 时间窗授权**:危险能力默认 disarm,需 admin 武装 + 自动过期 + deny-list 优先;启用与使用权限分裂。
+5. **多层级 AND 门控**:工具策略 + gateway 命令策略 + OS 权限(Accessibility/Screen Recording)+ 沙箱第二道门,授权前每层都同意。
+6. **沙箱用 Docker 默认姿态**:`network:none` + `readOnlyRoot` + `capDrop:ALL` + 专用网络 + noVNC 密码放 URL fragment;Gateway 永留宿主,只移工具执行。
+7. **exec allowlist 不能靠词法匹配**:认语义,否则被续行/busybox 多路复用/GNU 选项缩写绕过(论文实证)。
+8. **skill/plugin 当供应链威胁对待**:签名校验(VirusTotal/ClawScan)、路径遏制、安装策略、上下文来源标注;运行时 exec 沙箱挡不住 LLM 上下文内 dropper。
+9. **统一跨层策略,而非逐层信任**(论文核心结论):per-layer/per-call-site 信任执行让跨层组合攻击对局部修复免疫;防御要做成统一策略边界 + URL provenance + 配置创建时完整性。
+10. **逃生口而非全有全无**:`tools.elevated` 给沙箱内只读场景的个别提权命令留口,降低"为了一两条命令关掉整个沙箱"的诱惑。
+
+---
+
+### 九、关键风险(来自 arXiv:2603.27517,470 advisory)
+
+- **完整未认证 RCE 链**:Gateway + Node-Host 子系统三条独立中/高危 advisory 组合 → 从 LLM tool call 到宿主进程的完整 RCE。三阶段:① 经 `gatewayUrl` 建立 SSRF 原语;② 经 Agent Tool Interface 窃取 token;③ 经 `node.invoke` Exec 审批绕过实现 RCE。
+- **Gateway WebSocket Interface = 主攻击面**;Channel Input Interface = 最宽集成面;Exec Policy Engine = 解析复杂度面;Container Boundary = 高关注面。
+- **§5.5 工具分发面 advisory 分布**:File & Process 30、Sandbox Isolation 17、Browser Tooling 10。
+- **结构性弱点**:"per-layer trust enforcement rather than unified policy boundaries"——跨层攻击对层内修复系统性免疫。防御 §6.7:**Unified Inter-Layer Policy Enforcement**。
+
+> 工程启示:OpenClaw 的 computer use 工程化在"通道分离 + 多级门控 + 沙箱默认姿态 + 帧绑定坐标"上做得相当成熟,但论文揭示其根本债在于**信任逐层散落、exec allowlist 词法模型、skill 分发缺运行时策略**——这三点正是任何自托管 computer use 框架要前置设计而非事后补丁的红线。
+
+---
+
+## 十九、Hermes agent 核心技术梳理与对比
+
+按要求先尝试 `mcp__tavily__tavily_search`,但 Tavily 当日配额已超限(`exceeds your plan's set usage limit`),WebSearch 在当前 CC Switch 链路下不可用。遂降级为**直接抓取一手权威源**(GitHub API JSON、仓库 raw README、arXiv abstract、官方 docs.openclaw.ai),保真度反而高于二手搜索结果。下述事实均来自一手源,关键数字与机制可复核。
+
+---
+
+### 一、Hermes 是什么:身份澄清
+
+**结论:Hermes = `NousResearch/hermes-agent`,是一个由 Nous Research 构建的、独立的、自托管"自改进"AI agent harness(进程框架),不是 Nous 的 Hermes 系列模型,也不是 OpenClaw 的子工具。**
+
+一手源佐证:
+- GitHub 仓库 `NousResearch/hermes-agent`,描述 "The agent that grows with you",homepage `hermes-agent.nousresearch.com`,语言 **Python**,MIT,topics 含 `hermes`/`hermes-agent`/`nous-research`/`openclaw`/`moltbot`/`clawdbot`。创建于 2025-07-22,2026-07-21 仍在更新。Stars 约 **217k**(GitHub API 实时;`awesome-hermes-agent` 2026-05-06 快照记 134k+,两个月近乎翻倍)。
+- `SamurAIGPT/awesome-openclaw` 明确写道:"See also: awesome-hermes-agent — curated resources for **Hermes Agent (Nous Research)**, the most common **upgrade path from OpenClaw** with a native `hermes claw migrate` command."
+- NVIDIA `NemoClaw` 描述:"Run agents like **Hermes**, LangChain Deep Agents, and **OpenClaw** more securely inside NVIDIA OpenShell"——把 Hermes 与 OpenClaw 并列为同级 agent harness。
+- `farion1231/cc-switch`、`garrytan/gbrain`、`lucinate-ai/lucinate` 均把 "OpenClaw / Hermes Agent" 作为对等后端并列支持。
+
+因此三者关系清晰:
+- **OpenClaw**:Peter Steinberger 的 TypeScript 个人 AI 助手框架(前身 Moltbot/Clawdbot),384k stars,生态最广。
+- **Hermes Agent**:Nous Research 的 Python 自改进 agent 框架,定位为"从 OpenClaw 升级/迁移"的下一代,强调闭环学习与云原生部署,~217k stars,增速更猛。
+- **lucinate / cc-switch / HermesClaw / NemoClaw**:跨两者生态的桥接客户端与托管/沙箱平台。**lucinate**(`lucinate-ai/lucinate`,Go,Apache-2.0)是第三方 terminal-native TUI,描述为"chat client for OpenClaw, Hermes, Ollama and OpenAI-compatible providers … connect to the gateway, pick an agent, and chat"——证实两者都暴露可被同一 TUI 消费的 gateway 端点。**CrewClaw**(`crewclaw.com`,见 `mergisi/awesome-openclaw-agents`)本质是 OpenClaw 的"一键 deploy 包生成器"(Dockerfile+compose+bot+README,205 个 SOUL.md 模板),Hermes 侧的等价"setup guide"是官方 `hermes setup` / `hermes claw migrate` 与 `awesome-hermes-agent`。
+
+---
+
+### 二、Hermes 核心技术梳理
+
+#### 1. 设计理念:闭环学习( Closed Learning Loop )
+
+这是 Hermes 与所有同类的根本差异点。官方一句话:"The only agent with a built-in learning loop — it creates skills from experience, improves them during use, nudges itself to persist knowledge, searches its own past conversations, and builds a deepening model of who you are across sessions."
+
+可拆为四个自运转子机制:
+- **经验→技能**:复杂任务后自主生成 skill(skill 即"程序性记忆")。
+- **用中改进**:skill 在使用中自我迭代。
+- **自持久化**:周期性"nudge"把临时上下文沉淀为长期记忆。
+- **跨会话召回**:FTS5 全文检索历史会话 + LLM 摘要做跨 session 回忆。
+- **用户建模**:集成 [Honcho](https://github.com/plastic-labs/honcho) 做"辩证式(dialectic)用户建模",持续深化"你是谁"。
+
+v0.12.0("The Curator release", 2026-04-30)进一步引入 **`hermes curator`**:一个自治 cron 进程,每周对 skill 库**打分、合并、修剪**——把"技能膨胀"变成自维护问题。这是一个可直接复用的"自维护程序性记忆"范式。
+
+#### 2. 架构:单 gateway 进程 + 多终端后端 + 子 agent RPC
+
+- **单 gateway 进程**统一承载消息面(Telegram/Discord/Slack/WhatsApp/Signal/Email,`awesome-hermes-agent` 记 18 平台含 Feishu/Lark/WeCom/QQBot/Yuanbao,MS Teams 经插件)。
+- **六/七个 terminal backend**:local、Docker、SSH、Singularity、Modal、Daytona(+ Vercel Sandbox)。其中 **Daytona/Modal 提供 serverless 持久化**:agent 环境 idle 时休眠、按需唤醒,"闲置近乎零成本"。这是 Hermes "跑在 $5 VPS 或 GPU 集群或 serverless"的架构支撑。
+- **委派与并行**:spawn 隔离 subagent 跑并行 workstream;可写 Python 脚本经 **RPC 调用工具**,把多步 pipeline 压成"零上下文成本"的单轮——这是关键的**上下文经济(context economy)范式**:把状态留在进程外,不污染 LLM 上下文窗口。
+- **Research-ready**:批量轨迹(trajectory)生成 + 轨迹压缩,用于训练下一代 tool-calling 模型(配套 `tinker-atropos` RL 训练、`hermes-agent-self-evolution` 用 DSPy+GEPA 进化自身 prompt)。Hermes 不只是"用 agent",还在"产 agent 训练数据"。
+- **入口**:`hermes`(TUI)、`hermes gateway`(消息网关)、`hermes setup`、`hermes model`、`hermes tools`、`hermes claw migrate`、`hermes doctor`。CLI 与消息面共享 slash 命令(`/new` `/model` `/personality` `/retry` `/undo` `/compress` `/usage` `/insights` `/skills`)。
+
+#### 3. 能力矩阵
+
+| 维度 | Hermes 实现 |
+|---|---|
+| 模型 | 任意 provider:Nous Portal(300+ 模型)、OpenRouter、OpenAI、自建端点;`hermes model` 热切,无锁 |
+| Tool Gateway | Nous Portal 一个订阅统包 web search(Firecrawl)、图像生成(FAL)、TTS(OpenAI)、云浏览器(Browser Use),按后端开关 |
+| 工具 | 40+ 工具 + toolset 系统 |
+| Skills | agentskills.io 开放标准(跨 Hermes/Claude Code/Cursor/Codex),Skills Hub,自生成+Curator 自维护 |
+| 记忆 | agent-curated + nudge 持久化 + FTS5 会话检索 + Honcho 用户建模 |
+| 调度 | 内建 cron,自然语言定时投递到任意平台 |
+| MCP | 完整 MCP 集成 |
+| API | ACP + API server,可供外部调用 |
+| 安全 | command approval、DM pairing、container isolation(六后端) |
+
+#### 4. 部署
+
+- 安装:`curl -fsSL hermes-agent.nousresearch.com/install.sh | bash`(Linux/macOS/WSL2/Termux)或 PowerShell 一行(Windows 原生,无需 WSL)。installer 自带 uv、Python 3.11、Node.js、ripgrep、ffmpeg、**便携 MinGit**(解压到 `%LOCALAPPDATA%\hermes\git`,免 admin、与系统 Git 隔离)。
+- `$HERMES_HOME`(通常 `~/.hermes`)托管完整 git checkout + managed venv + 懒依赖。
+- **云优先、不绑笔记本**:核心理念是"从 Telegram 说话,agent 在云 VM 上干活"。
+
+#### 5. 生态
+
+官方衍生:`autonovel`(10 万字+长文流水线)、`hermes-paperclip-adapter`、`hermes-agent-self-evolution`(DSPy+GEPA)、`tinker-atropos`(RL)。桥接:HermesClaw(同一 WeChat 账号同时跑 Hermes+OpenClaw)、computer-use-linux MCP、lucinate TUI、cc-switch 桌面。社区 skill 库(`wondelai/skills`、`Anthropic-Cybersecurity-Skills` 753+ MITRE ATT&CK skill 等)走 agentskills.io 标准。
+
+---
+
+### 三、OpenClaw 核心技术梳理(对比基线,已核实)
+
+- **定位**:"personal AI assistant you run on your own devices"——local-first、单用户、always-on。TypeScript/Node 22.22.3+/24.15+/25.9+,pnpm workspace,MIT,384k stars/80.6k forks。"The lobster way 🦞",为太空龙虾 Molty 而建,作者 Peter Steinberger(@steipete)。引擎用 Mario Zechner 的 [pi-mono](https://github.com/earendil-works/pi-mono)(进程内 `createAgentSession`)。
+- **架构(官方 docs 实证)**:Gateway-Node-Host 分层。**单一长存 Gateway daemon** 拥有所有消息面(WhatsApp via Baileys、Telegram via grammY、Slack、Discord、Signal、iMessage、WebChat…共 23+ 渠道)。控制面客户端(macOS app/CLI/web UI/automations)与 Nodes(macOS/iOS/Android/headless)均经 **WebSocket** 连到默认 `127.0.0.1:18789`,Node 声明 `role:node` + 显式 caps/commands。Canvas/A2UI host 复用同端口(`/__openclaw__/canvas/`、`/__openclaw__/a2ui/`)。
+- **Wire protocol**:WebSocket text frame + JSON,首帧必须 `connect`;`req/res/event` 三型;**TypeBox schema → JSON Schema → Swift 模型 codegen**(为苹果原生客户端服务);副作用方法(`send`/`agent`)强制幂等 key;设备配对用 challenge nonce 签名(v3 绑定 platform+deviceFamily,元数据变更需 repair pairing)。远程访问首选 Tailscale/VPN 或 SSH 隧道(`ssh -N -L 18789:127.0.0.1:18789`)。
+- **Memory**:docs 把记忆单列一章——builtin / QMD / **Honcho**(与 Hermes 同源)三引擎可选,外加 Active memory、Inferred commitments(推断承诺)、**Dreaming**(梦境式记忆整理)、Compaction、Session search、Channel docking。配置文件 `SOUL.md`(人格)/`TOOLS.md`/`AGENTS.md`/`SKILL.md`(及 `HEARTBEAT.md`),workspace 在 `~/.openclaw/workspace`,状态落 `~/.openclaw`。
+- **Skills**:ClawHub(clawhub.ai,700+ skill),`~/.openclaw/workspace/skills/<name>/SKILL.md`,分 bundled/managed/workspace 三类;插件需 `openclaw.plugin.json`。MCP 支持(13000+ server)。
+- **安全**:`main` session 默认 host 全权;`agents.defaults.sandbox.mode:"non-main"` 把非主 session 关进沙箱(Docker 默认后端,另有 SSH/OpenShell);allowlist 默认放行 bash/process/read/write/edit/sessions_*,拒绝 browser/canvas/nodes/cron/discord/gateway;DM pairing 防陌生人;`openclaw doctor` 体检。
+- **能力亮点**:Voice Wake + Talk Mode(ElevenLabs+系统 TTS)、Live Canvas(A2UI)、多 agent 路由(per-channel/peer 隔离 workspace)、companion apps(Windows Hub/macOS 菜单栏/iOS/Android node)、Webhooks/Gmail Pub/Sub/Cron、多 provider(Claude/GPT/Gemini/本地 Ollama/LM Studio)。
+
+---
+
+### 四、arXiv 安全分析(2603.27517)对 OpenClaw 的定性
+
+[A Security Analysis of the OpenClaw AI Agent Framework](https://arxiv.org/abs/2603.27517)(Suwansathit, Zhang, Gu;2026-03-29 v1,2026-05-13 v3)系统分类了 **470 条 advisory**,沿双轴:系统轴(exec policy/gateway/channel/sandbox/browser/plugin/agent-prompt)× 攻击轴(身份伪造/策略绕过/跨层组合/prompt injection/供应链升级)。三大核心发现:
+
+1. **完整未授权 RCE 链**:Gateway 与 Node-Host 子系统的 3 个 Moderate/High 漏洞组合成"投递→利用→C2"全链,从一次 LLM tool call 直达宿主进程。
+2. **exec allowlist 闭世界假设失效**:主命令过滤机制假设"命令身份可经词法解析恢复",但 shell 行续接、busybox 多路复用、GNU 选项缩写均可绕过。
+3. **恶意 skill 投递**:经 plugin 渠道分发的恶意 skill 在 LLM 上下文内执行两阶段 dropper,**绕过 exec 管道**——skill 分发面缺运行时策略执行。
+
+**结构性结论**:"主导弱点是逐层信任执行(per-layer trust)而非统一策略边界,使跨层攻击对局部修复具有韧性。" 这条结论对所有 agent harness(含 Hermes)都适用,是可复用的安全第一性原则。
+
+---
+
+### 五、Hermes vs OpenClaw 系统性对比
+
+| 维度 | OpenClaw | Hermes Agent |
+|---|---|---|
+| **出品/语言/许可** | Peter Steinberger + 社区;TypeScript/Node;MIT | Nous Research;Python;MIT |
+| **Stars(2026-07)** | ~384k(80.6k fork) | ~217k(5 月 134k,增速更快) |
+| **设计哲学** | 个人助手、local-first、多端多渠道"无处不在" | 自改进 agent、闭环学习、云原生"不绑笔记本" |
+| **核心抽象** | Gateway 控制面 + Node 设备面 + Host;SOUL.md 人格 | 闭环学习环 + skill=程序性记忆 + Curator 自维护 |
+| **运行时** | pi-mono 进程内 createAgentSession | Python agent loop + 6/7 terminal backend |
+| **消息渠道** | 23+(WhatsApp/Telegram/Slack/Discord/Signal/iMessage/Teams/Matrix/Feishu/WeChat/QQ/WebChat…) | 18+(Telegram/Discord/Slack/WhatsApp/Signal/Email/Feishu/WeCom/QQBot/Yuanbao…) |
+| **部署形态** | 本机 daemon(launchd/systemd)+ 原生 app;Tailscale/SSH 远程 | $5 VPS / GPU / **serverless 休眠**(Modal/Daytona);云优先 |
+| **终端/TUI** | WebChat + CLI + macOS app;lucinate 可接 | 原生全功能 TUI(多行编辑/补全/中断重定向/流式工具输出) |
+| **Memory** | 四层(SOUL/TOOLS/USER/Session)+ builtin/QMD/Honcho 引擎 + Active/Commitments/Dreaming/Compaction | agent-curated + nudge + FTS5 会话检索 + Honcho + Curator 周期治理 |
+| **Skills** | ClawHub(700+),SKILL.md,bundled/managed/workspace,openclaw.plugin.json | agentskills.io 开放标准(跨平台),Skills Hub,自生成+用中改进+Curator 修剪 |
+| **子 agent/并行** | 多 agent 路由 + parallel specialist lanes + delegate 架构 | spawn 隔离 subagent + **Python RPC 调工具**(零上下文成本轮) |
+| **模型/provider** | Claude/GPT/Gemini/Ollama/LM Studio;model failover | 任意 provider;Nous Portal(300+ 模型)+ Tool Gateway 统包 |
+| **安全模型** | DM pairing + sandbox.mode non-main(Docker/SSH/OpenShell)+ allowlist;**arxiv 披 470 advisory、RCE 链、exec 闭世界失效、skill dropper** | command approval + DM pairing + container isolation(6 后端);Python 攻击面不同,advisory 语料尚少 |
+| **Canvas/视觉** | Live Canvas + A2UI(agent 驱动可视化工作区) | 无对等 Canvas;偏 terminal/消息 |
+| **语音** | Voice Wake(macOS/iOS)+ Talk Mode(Android 连续语音,ElevenLabs) | 语音 memo 转写 + TTS(经 Portal/OpenAI) |
+| **研究/训练** | 个人 agent benchmark pack | 轨迹批量生成+压缩、self-evolution(DSPy+GEPA)、tinker-atropos RL |
+| **迁移互通** | 被迁移方;`hermes claw migrate` 反向导入其 SOUL/MEMORY/USER/AGENTS/skill/key | `hermes claw migrate` 一键导入 OpenClaw 全套 |
+| **生态桥接** | ClawHub、OctoClaw/SlackClaw/RapidClaw/PrimeClaws 托管、NemoClaw | agentskills.io、Nous Portal、autonovel、HermesClaw(WeChat 共跑) |
+| **跨两端公共件** | lucinate(TUI)、cc-switch(桌面)、gbrain(brain 配置)、NemoClaw(沙箱)、Honcho(用户建模)、agentskills.io(skill 标准) | 同左 |
+
+---
+
+### 六、核心技术异同深挖
+
+#### 同(共享范式)
+1. **单 gateway 进程统管消息面**:两者都把多渠道收敛到一个长存进程,避免每渠道一进程的连接态碎片化。OpenClaw 用 WebSocket typed API + JSON Schema,Hermes 用统一 gateway 进程——同构不同实现。
+2. **SOUL.md 人格 + markdown 配置即代码**:SOUL.md/AGENTS.md/SKILL.md 是两者共用的"人格与能力声明"范式,可跨框架迁移(这是 `hermes claw migrate` 能成立的基础)。
+3. **Honcho 用户建模**:OpenClaw docs 有 `memory-honcho`,Hermes README 也用 Honcho——同一第三方辩证式用户建模组件,说明"agent 需要独立于对话的用户画像层"已成共识。
+4. **agentskills.io / SKILL.md 跨平台标准**:OpenClaw 的 SKILL.md 与 Hermes 主推的 agentskills.io 趋同,skill 正在成为跨 harness 的可移植资产(同一 skill 跑在 Hermes/OpenClaw/Claude Code/Codex)。
+5. **沙箱 + DM pairing 双重防线**:面对"DM 即不可信输入",两者都做了"陌生发送人配对码 + 非主 session 沙箱化"。
+
+#### 异(分水岭)
+1. **学习闭环 vs 渠道覆盖**:这是最大分歧。Hermes 把"agent 自我变强"做成一等公民(自生成 skill→用中改进→Curator 修剪→轨迹反哺训练);OpenClaw 把"在每块屏幕/每个消息 app 上都在场"做成一等公民(23 渠道 + 原生 app + Canvas + 语音唤醒)。**Hermes 押注 agent 越用越聪明,OpenClaw 押注 agent 越用越无处不在。**
+2. **云优先 vs 本机优先**:Hermes 的 serverless 休眠(Modal/Daytona)把"闲置零成本 always-on"做成默认;OpenClaw 默认本机 daemon + Tailscale,强调"在我设备上、本地快"。这直接决定部署心智:Hermes 适合"一个云 agent 24h 在线,我从手机随便聊",OpenClaw 适合"agent 住在我 Mac 里,接管我的桌面/消息"。
+3. **上下文经济**:Hermes 的"Python 脚本经 RPC 调工具、把多步压成零上下文成本轮"是鲜明的 context-economy 范式;OpenClaw 更依赖 session/compaction/managed worktree 管理上下文。前者更省 token,后者更重状态持久化。
+4. **Canvas/A2UI 缺位**:OpenClaw 的 agent 驱动可视化 Canvas 是 Hermes 没有的能力——若需要"agent 直接渲染我可控的实时画布",OpenClaw 独占。
+5. **安全成熟度反向**:OpenClaw 因更早、更大、攻击面更广(23 渠道 + Canvas + browser + plugin),已被 arxiv 系统性解剖出 470 advisory 与 RCE 链;Hermes 较新、Python 栈、渠道略少,公开 advisory 语料少,但**这并不意味着更安全**——arxiv 的"逐层信任 vs 统一策略"结论对 Hermes 同样成立,Hermes 反而应把 OpenClaw 的教训当免费威胁模型。
+6. **研究接口**:Hermes 原生支持轨迹生成/压缩/RL 训练管线,是"造模型"的视角;OpenClaw 偏"用模型"的产品视角(虽有 personal-agent-benchmark-pack)。
+
+---
+
+### 七、各自优劣与适用场景
+
+#### OpenClaw
+- **优势**:渠道最广(23+)、原生 app 最全(macOS/iOS/Android/Windows Hub)、Canvas/A2UI 独占、Voice Wake、ClawHub 700+ skill、社区与托管生态最厚、TypeScript 对前端友好。
+- **劣势**:安全面已被公开证伪(exec allowlist 闭世界、跨层 RCE 链、skill dropper),本机优先意味着 always-on 成本与设备绑定;无原生学习闭环(skill 不会自进化)。
+- **适用**:Apple 全家桶用户、要把 agent 嵌进 iMessage/WhatsApp/Slack 等既有消息流、需要 agent 操控桌面/Canvas/语音、个人单用户"本地快、永远在"、企业内部多渠道客服/运营 agent(配合 CrewClaw 模板与 NemoClaw 沙箱)。
+
+#### Hermes Agent
+- **优势**:闭环学习 + Curator 让 agent 越用越强、serverless 休眠近乎零闲置成本、Python 生态(科学计算/RL/数据处理无缝)、上下文经济(RPC 子 agent)、agentskills.io 跨平台标准、研究/训练就绪。
+- **劣势**:渠道与原生 app 略少于 OpenClaw、无 Canvas/A2UI 可视化、较新故社区 skill/托管生态尚在追赶、Python 栈对纯前端团队有门槛、安全语料少易给人"假性安全感"。
+- **适用**:要一个"24h 云端在线、我从 Telegram 随时聊"且越用越聪明的个人 agent;Python 重度用户/研究者的 agent 实验台;需要批量产训练轨迹或做 self-improvement 研究的团队;成本敏感的 serverless 部署($5 VPS 起);从 OpenClaw 迁移、想要学习闭环升级的用户(`hermes claw migrate`)。
+
+---
+
+### 八、可复用范式( Best Practices ,跨框架可迁移)
+
+1. **闭环程序性记忆**:经验→自动生成 skill→用中改进→周期 Curator 打分/合并/修剪。任何 agent harness 都可补这层"自维护技能库",防止 skill 无限膨胀。
+2. **Gateway-as-control-plane**:单长存进程 + typed WS API + JSON Schema 校验 + 幂等 key + 设备配对 challenge 签名。多面 agent 的通用控制面骨架。
+3. **统一策略边界(arxiv 教训)**:不要逐层(exec/gateway/channel/skill)各自信任,需有跨层统一策略;exec allowlist 不能假设词法可恢复命令身份(防御行续接/busybox/选项缩写);skill 分发必须有**运行时**策略执行,不能只靠静态审核。
+4. **上下文经济**:把多步 pipeline 写成"调工具的脚本"经 RPC 跑在子 agent,状态留进程外,只在末尾回传结果——大幅省 token、扩能力边界。
+5. **serverless 休眠 always-on**:Modal/Daytona 闲置休眠、按需唤醒,实现"近零闲置成本 + 永远在线",适合个人 agent 云化。
+6. **跨框架可移植层**:SOUL.md(人格)+ agentskills.io(skill)+ Honcho(用户建模)三层正在成为事实标准,设计 agent 时优先对齐,避免锁死单一 harness。
+7. **迁移互操作**:`hermes claw migrate` 证明"导入 SOUL/MEMORY/USER/AGENTS/skill/key/TTS/allowlist"可工程化,跨 harness 迁移应以这些原子资产为边界。
+8. **研究反哺产品**:Hermes 用 agent 自身轨迹(DSPy+GEPA 进化 prompt、tinker-atropos RL)把"用 agent"和"造更好的 agent"闭环——可复用的 self-hosted agent 自演化路径。
+
+---
+
+### 信源(均为一手抓取)
+
+- Hermes Agent 仓库:https://github.com/NousResearch/hermes-agent
+- Hermes 官方文档:https://hermes-agent.nousresearch.com/docs/
+- awesome-hermes-agent:https://github.com/SamurAIGPT/awesome-hermes-agent
+- OpenClaw 仓库:https://github.com/openclaw/openclaw
+- OpenClaw 官方 README(raw):https://raw.githubusercontent.com/openclaw/openclaw/main/README.md
+- OpenClaw 架构文档:https://docs.openclaw.ai/concepts/architecture
+- awesome-openclaw:https://github.com/SamurAIGPT/awesome-openclaw
+- awesome-openclaw-agents(CrewClaw):https://github.com/mergisi/awesome-openclaw-agents
+- arXiv 安全分析 2603.27517:https://arxiv.org/abs/2603.27517
+- lucinate TUI 客户端:https://github.com/lucinate-ai/lucinate
+- NVIDIA NemoClaw:https://github.com/NVIDIA/NemoClaw
+- garrytan/gbrain(双 brain 配置):https://github.com/garrytan/gbrain
+- ClawHub skill registry:https://clawhub.ai
+- agentskills.io skill 标准:https://agentskills.io
+- Honcho 用户建模:https://github.com/plastic-labs/honcho
+- pi-mono 引擎:https://github.com/earendil-works/pi-mono
+
 ---
 
 ## 信源汇总
 
+- http://localhost:11434/v1","apiKey":"ollama-local","api":"openai-completions",
+- https://<magicdns>/`。可用
+- https://a-bots.com/blog/openclaw
 - https://addozhang.medium.com/agent-installs-agent-using-openclaw-to-install-hermes-and-testing-self-evolution-along-the-way-fe0b34b48880
 - https://agentclw.com/blog/best-openclaw-skills-2026
 - https://agentfactory.panaversity.org/docs/Building-OpenClaw-Apps/meet-your-personal-ai-employee/install-skills-discover-ecosystem
+- https://agentskills.io
 - https://ai-coding.wiselychen.com/en/openclaw-architecture-deep-dive-context-memory-token-crusher
+- https://aiagentssimplified.substack.com/p/openclaw-unpacked
 - https://aiskill.market/blog/openclaw-skill-ecosystem-explained
+- https://alexhost.com/faq/how-to-install-openclaw-on-macos
 - https://allcleardigital.com/how-to-update-openclaw-safely-june-2026-stable-beta-dev-after-2026-6-1
 - https://apidog.com/blog/clawsweeper-openclaw-github-triage-bot
 - https://apidog.com/blog/install-openclaw-mac-mini-openclaw-cloudflare
+- https://apidog.com/blog/openclaw-deepseek-ai-assistant
 - https://arxiv.org/abs/2603.10387
 - https://arxiv.org/abs/2603.27517
 - https://arxiv.org/abs/2604.04759
 - https://arxiv.org/html/2603.10387v1
 - https://arxiv.org/html/2603.11619v1
 - https://arxiv.org/html/2603.12644v1
+- https://arxiv.org/html/2603.13151v1
 - https://arxiv.org/html/2603.27517v1
 - https://arxiv.org/html/2603.27517v3
 - https://arxiv.org/html/2604.03131v1
@@ -2308,6 +4067,7 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://arxiv.org/html/2604.27464v1
 - https://arxiv.org/html/2605.23330v1
 - https://arxiv.org/pdf/2603.10387
+- https://austinosuide.com/blog/running-openclaw-on-a-raspberry-pi-kubernetes-cluster/index.html
 - https://avasdream.com/blog/openclaw-sessions-multiagent-deep-dive
 - https://aws.amazon.com/cn/blogs/china/openclaw-service-enterprise-share-system-design
 - https://bdtechtalks.substack.com/p/how-prompt-injection-broke-nvidias
@@ -2318,6 +4078,9 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://blink.new/blog/openclaw-soul-heartbeat-setup
 - https://blog.cloudflare.com/moltworker-self-hosted-ai-agent
 - https://blog.cyberdesserts.com/openclaw-malicious-skills-security
+- https://blog.gopenai.com/how-i-set-up-openclaw-on-a-mac-mini-f97d1531061e
+- https://blog.ogwilliam.com/post/secure-openclaw-moltbot-deployment-cloudflare.html
+- https://blog.salad.com/reduce-your-openclaw-llm-costs-saladcloud-guide
 - https://blog.terrydjony.com/connect-openclaw-to-github-and-create-pull-requests
 - https://blogs.cisco.com/ai/personal-ai-agents-like-openclaw-are-a-security-nightmare
 - https://bulwarkai.io/blog/openclaw-enterprise-bans
@@ -2326,10 +4089,13 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://cenrax.substack.com/p/understanding-openclaw-architecture
 - https://chenguangliang.com/en/posts/openclaw-memory-best-practices
 - https://claudefa.st/blog/tools/extensions/openclaw-vs-claude-code
+- https://clawhub.ai
+- https://clawnest.ai/blog/openclaw-ollama-local-models-guide
 - https://clawsweeper.bot/pr-review-comments.html
 - https://clawsweeper.bot/repair
 - https://clawsweeper.bot/repair/auto-update-prs.html
 - https://cloud.tencent.com/developer/article/2633970
+- https://cloud.tencent.com/developer/article/2634143
 - https://cloud.tencent.com/developer/article/2636124
 - https://cloud.tencent.com/developer/article/2637476
 - https://cloud.tencent.com/developer/article/2648189
@@ -2339,6 +4105,8 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://conscia.com/blog/the-openclaw-security-crisis
 - https://crewclaw.com/blog/openclaw-agent-teams-guide
 - https://ctolunchnyc.substack.com/p/cracking-the-claw
+- https://cybernews.com/vps/how-to-deploy-openclaw-on-a-vps
+- https://danubedata.ro/blog/self-host-openclaw-vps-ai-assistant-2026
 - https://data-dave.medium.com/cardioclaw-an-observability-layer-for-ai-agent-scheduling-0977d9184979
 - https://datawhalechina.github.io/hello-claw/cn/build/chapter1
 - https://deepinfra.com/blog/openclaw-security-prompt-injection-supply-chain-attacks-hardening
@@ -2349,93 +4117,162 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://dev.to/mcsee/ai-coding-tip-013-use-progressive-disclosure-102a
 - https://dev.to/oug/token-harness-openclaw-rag-mcp-agent-whats-the-difference-one-map-makes-it-clear-576a
 - https://dev.to/zeling_chen_73840b4951f53/understand-openclaw-by-building-one-6-agents-are-running-your-are-sleeping-4ooe
+- https://developer.aliyun.com/article/1714157
+- https://developers.redhat.com/articles/2026/04/09/build-resilient-guardrails-openclaw-ai-agents-kubernetes
+- https://docs.openclaw.ai/automation
 - https://docs.openclaw.ai/automation/cron-jobs
+- https://docs.openclaw.ai/automation/tasks
 - https://docs.openclaw.ai/channels/channel-routing
 - https://docs.openclaw.ai/channels/imessage
 - https://docs.openclaw.ai/channels/imessage-from-bluebubbles
 - https://docs.openclaw.ai/clawhub
 - https://docs.openclaw.ai/clawhub/skill-format
+- https://docs.openclaw.ai/cli/audit
+- https://docs.openclaw.ai/cli/gateway
 - https://docs.openclaw.ai/cli/memory
+- https://docs.openclaw.ai/cli/node
 - https://docs.openclaw.ai/cli/security
 - https://docs.openclaw.ai/cli/skills
+- https://docs.openclaw.ai/cli/tasks
 - https://docs.openclaw.ai/cli/update
 - https://docs.openclaw.ai/concepts/active-memory
 - https://docs.openclaw.ai/concepts/agent
 - https://docs.openclaw.ai/concepts/agent-loop
+- https://docs.openclaw.ai/concepts/architecture
 - https://docs.openclaw.ai/concepts/compaction
+- https://docs.openclaw.ai/concepts/context
 - https://docs.openclaw.ai/concepts/memory
+- https://docs.openclaw.ai/concepts/model-providers
+- https://docs.openclaw.ai/concepts/queue
 - https://docs.openclaw.ai/concepts/session
 - https://docs.openclaw.ai/concepts/session-tool
 - https://docs.openclaw.ai/concepts/system-prompt
+- https://docs.openclaw.ai/gateway
+- https://docs.openclaw.ai/gateway/authentication
 - https://docs.openclaw.ai/gateway/config-agents
+- https://docs.openclaw.ai/gateway/configuration
 - https://docs.openclaw.ai/gateway/heartbeat
+- https://docs.openclaw.ai/gateway/local-models
+- https://docs.openclaw.ai/gateway/logging
+- https://docs.openclaw.ai/gateway/multiple-gateways
+- https://docs.openclaw.ai/gateway/pairing
+- https://docs.openclaw.ai/gateway/protocol
+- https://docs.openclaw.ai/gateway/remote
+- https://docs.openclaw.ai/gateway/restart-recovery
 - https://docs.openclaw.ai/gateway/sandboxing
 - https://docs.openclaw.ai/gateway/security
 - https://docs.openclaw.ai/gateway/security/exposure-runbook
+- https://docs.openclaw.ai/gateway/security/rate-limiting
+- https://docs.openclaw.ai/gateway/tailscale
+- https://docs.openclaw.ai/gateway/troubleshooting
+- https://docs.openclaw.ai/gateway/trusted-proxy-auth
 - https://docs.openclaw.ai/help/faq
+- https://docs.openclaw.ai/install
 - https://docs.openclaw.ai/install/development-channels
+- https://docs.openclaw.ai/install/docker
+- https://docs.openclaw.ai/install/kubernetes
 - https://docs.openclaw.ai/install/updating
+- https://docs.openclaw.ai/nodes
+- https://docs.openclaw.ai/nodes/computer-use
+- https://docs.openclaw.ai/platforms/linux
+- https://docs.openclaw.ai/plugins/codex-computer-use
+- https://docs.openclaw.ai/providers/lmstudio
 - https://docs.openclaw.ai/reference/AGENTS.default
 - https://docs.openclaw.ai/reference/memory-config
 - https://docs.openclaw.ai/reference/session-management-compaction
 - https://docs.openclaw.ai/reference/test
+- https://docs.openclaw.ai/start/getting-started
+- https://docs.openclaw.ai/tools
+- https://docs.openclaw.ai/tools/browser
 - https://docs.openclaw.ai/tools/creating-skills
 - https://docs.openclaw.ai/tools/exec
 - https://docs.openclaw.ai/tools/exec-approvals
 - https://docs.openclaw.ai/tools/exec-approvals-advanced
+- https://docs.openclaw.ai/tools/media-overview
 - https://docs.openclaw.ai/tools/self-learning
 - https://docs.openclaw.ai/tools/skill-workshop
 - https://docs.openclaw.ai/tools/skills
 - https://docs.openclaw.ai/tools/skills-config
 - https://docs.openclaw.ai/tools/subagents
+- https://docs.openclaw.ai/tools/thinking
 - https://docs.openclaw.ai/zh-CN/concepts/memory
+- https://dreamsaicanbuy.com/blog/openclaw-tips-configuration-security
 - https://eastondev.com/blog/en/posts/ai/20260205-openclaw-architecture-guide
 - https://eaveluo.com/en/docs/ai/openclaw/openclaw-multi-agent
+- https://embertype.com/blog/how-to-set-up-openclaw-mac
 - https://en.wikipedia.org/wiki/OpenClaw
-- https://en.wikipedia.org/wiki/Peter_Steinberger_(programmer)
+- https://en.wikipedia.org/wiki/Peter_Steinberger_(programmer
 - https://everbox.io/posts/tech/260406_openclaw-custom-skills
+- https://evil.example`
+- https://fast.io/resources/openclaw-raspberry-pi-webhook-automation
 - https://finance.yahoo.com/news/openclaw-founder-steinberger-joins-openai-223554158.html
 - https://findskill.ai/blog/openclaw-skills-guide
+- https://florian-darroman.medium.com/openclaw-mac-mini-setup-the-step-by-step-guide-389337569f1a
 - https://fortune.com/2026/02/19/openclaw-who-is-peter-steinberger-openai-sam-altman-anthropic-moltbook
 - https://gist.github.com/royosherove/971c7b4a350a30ac8a8dad41604a95a0
 - https://github.com/GetBindu/awesome-claude-code-and-skills/blob/main/readme.md
 - https://github.com/KimYx0207/AI-Coding-Guide-Zh/blob/main/docs/openclaw/07-%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F%E6%8C%87%E5%8D%97.md
 - https://github.com/MindDock/OpenClaw-Dev-Guide/blob/main/01-%E7%B3%BB%E7%BB%9F%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md
+- https://github.com/NVIDIA/NemoClaw
+- https://github.com/NousResearch/hermes-agent
 - https://github.com/SamurAIGPT/Best-AI-Agents/blob/main/README.md
+- https://github.com/SamurAIGPT/awesome-hermes-agent
 - https://github.com/SamurAIGPT/awesome-openclaw
 - https://github.com/TensorBlock/awesome-mcp-servers/blob/main/docs/knowledge-management--memory.md
 - https://github.com/VoltAgent/awesome-openclaw-skills
 - https://github.com/advisories/GHSA-48wf-g7cp-gr3m
 - https://github.com/centminmod/explain-openclaw/blob/master/03-deploy/cloudflare-moltworker.md
 - https://github.com/centminmod/explain-openclaw/blob/master/03-deploy/docker-model-runner.md
+- https://github.com/centminmod/explain-openclaw/blob/master/03-deploy/isolated-vps.md
 - https://github.com/centminmod/explain-openclaw/blob/master/05-worst-case-security/prompt-injection-attacks.md
 - https://github.com/clawwork-ai/clawwork
 - https://github.com/cloudflare/moltworker
 - https://github.com/coolmanns/openclaw-memory-architecture
+- https://github.com/earendil-works/pi-mono
+- https://github.com/feiskyer/openclaw-kubernetes
 - https://github.com/fullstackcrew-alpha/skill-smart-pr-review
+- https://github.com/garrytan/gbrain
 - https://github.com/jomafilms/openclaw-multitenant
 - https://github.com/laurentenhoor/devclaw
+- https://github.com/lucinate-ai/lucinate
 - https://github.com/mergisi/awesome-openclaw-agents
+- https://github.com/openclaw-easy/openclaw-easy-desktop
 - https://github.com/openclaw/agent-skills/blob/main/skills/autoreview/SKILL.md
 - https://github.com/openclaw/clawhub
 - https://github.com/openclaw/clawsweeper
 - https://github.com/openclaw/clawsweeper/blob/main/CHANGELOG.md
 - https://github.com/openclaw/gitcrawl
+- https://github.com/openclaw/openclaw
 - https://github.com/openclaw/openclaw/blob/main/SECURITY.md
+- https://github.com/openclaw/openclaw/issues/1656
+- https://github.com/openclaw/openclaw/issues/17917
+- https://github.com/openclaw/openclaw/issues/19778
 - https://github.com/openclaw/openclaw/issues/2023
+- https://github.com/openclaw/openclaw/issues/21624
 - https://github.com/openclaw/openclaw/issues/24689
 - https://github.com/openclaw/openclaw/issues/25145
 - https://github.com/openclaw/openclaw/issues/257
+- https://github.com/openclaw/openclaw/issues/29933
 - https://github.com/openclaw/openclaw/issues/38283
 - https://github.com/openclaw/openclaw/issues/38878
 - https://github.com/openclaw/openclaw/issues/39945
+- https://github.com/openclaw/openclaw/issues/44406
+- https://github.com/openclaw/openclaw/issues/45522
 - https://github.com/openclaw/openclaw/issues/45608
 - https://github.com/openclaw/openclaw/issues/47862
 - https://github.com/openclaw/openclaw/issues/5457
+- https://github.com/openclaw/openclaw/issues/56072
+- https://github.com/openclaw/openclaw/issues/66343
+- https://github.com/openclaw/openclaw/issues/6823
 - https://github.com/openclaw/openclaw/issues/6842
+- https://github.com/openclaw/openclaw/issues/71127
+- https://github.com/openclaw/openclaw/issues/87310
+- https://github.com/openclaw/openclaw/issues/91613
 - https://github.com/openclaw/openclaw/security
+- https://github.com/plastic-labs/honcho
 - https://github.com/rohitg00/awesome-openclaw
 - https://github.com/sahajamit/openclaw-deep-dive/blob/main/11-hooks-triggers-crons-webhooks.md
+- https://github.com/serhanekicii/openclaw-helm
 - https://github.com/singhvishalkr/pr-review-prep
 - https://github.com/sunnja69/akephalos
 - https://github.com/vincentkoc/awesome-openclaw
@@ -2444,6 +4281,9 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://grith.ai/blog/openclaw-banned-what-it-means
 - https://hackernoon.com/openclaw-in-practice-building-laptop-less-engineering-workflows-with-an-agent-harness
 - https://help.apiyi.com/en/clawhub-ai-openclaw-skills-registry-guide-en.html
+- https://help.apiyi.com/en/openclaw-save-tokens-input-context-control-targeted-editing-guide-en.html
+- https://hermes-agent.nousresearch.com/docs/
+- https://hindsight.vectorize.io/blog/2026/03/06/adding-memory-to-openclaw-with-hindsight
 - https://huggingface.co/blog/local-models-pr-triage
 - https://i.ifeng.com/c/8rXHNGJrXdL
 - https://imclaw.ai/en/lessons/15
@@ -2458,48 +4298,78 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://labs.cloudsecurityalliance.org/wp-content/uploads/2026/06/CSA_research_note_openclaw_indirect_prompt_injection_20260613-csa-styled.pdf
 - https://learnopenclaw.com/core-concepts/memory
 - https://limitededitionjonathan.substack.com/p/writing-openclaw-skills-lej-guide
+- https://lmstudio.ai/docs/integrations/openclaw
 - https://lumadock.com/tutorials/build-custom-openclaw-skills
 - https://lumadock.com/tutorials/openclaw-concurrency-retry-control
+- https://lumadock.com/tutorials/openclaw-cron-scheduler-guide
 - https://lumadock.com/tutorials/openclaw-github-automation-pr-reviews-ci-monitoring
+- https://lumadock.com/tutorials/openclaw-systemd-discord-qwen-free-model
+- https://lzw.me/docs/opencodedocs/openclaw/openclaw/appendix/api-reference
+- https://macly.io/openclaw-mac-mini
 - https://martinmueller.dev/openclaw-eng
+- https://masterprompting.net/blog/openclaw-with-lm-studio
 - https://mediacopilot.ai/openclaw-founder-joins-openai-personal-agents
 - https://medium.com/@Micheal-Lanham/the-markdown-file-that-beat-a-50m-vector-database-38e1f5113cbe
 - https://medium.com/@SudoXploit7/one-click-full-compromise-the-openclaw-vulnerability-that-broke-ai-agent-security-bf7cf406af9f
+- https://medium.com/@cris.santiago/openclaw-docker-sandbox-856f7c1767b7
 - https://medium.com/@databytoufik/how-openclaw-memory-works-802bd8465b1a
+- https://medium.com/@fahey_james/openclaw-what-it-is-who-owns-it-and-why-it-suddenly-matters-00b8b43603e2
+- https://medium.com/@gwrx2005/trustedclaw-owner-governed-guardrails-for-secure-agentic-automation-in-openclaw-646ea1508db0
+- https://medium.com/@humble92/deploying-multi-user-openclaw-assistants-in-kubernetes-21286f924506
+- https://medium.com/@martia_es/progressive-disclosure-the-technique-that-helps-control-context-and-tokens-in-ai-agents-8d6108b09289
+- https://medium.com/@muktharvortegix/how-to-set-up-openclaw-on-a-vps-your-24-7-ai-agent-in-2026-5d2cb7b5163b
 - https://medium.com/@nimritakoul01/openclaw-architecture-simply-explained-fca2e9f15f27
+- https://medium.com/@rogerio.a.r/setting-up-a-private-local-llm-with-ollama-for-use-with-openclaw-a-tale-of-silent-failures-01cadfee717f
 - https://medium.com/@srechakra/sda-f079871369ae
+- https://medium.com/@tentenco/seven-hard-won-lessons-for-running-openclaw-without-burning-out-65e3d97dda3d
+- https://medium.com/@virtualik/fine-tuning-openclaw-tutorial-how-to-go-from-install-to-multi-agent-in-a-single-evening-b559bc2d2f53
+- https://medium.com/@zilliz_learn/how-to-install-and-run-openclaw-previously-clawdbot-moltbot-on-mac-9cb6adb64eef
 - https://mem0.ai/blog/openclaw-memory-management-live-data-compaction-and-best-practices
 - https://mem0.ai/blog/openclaw-memory-system-how-it-works-and-how-it-set-it-up
 - https://mem0.ai/blog/openclaw-memory-system-how-it-works-and-how-to-set-it-up
 - https://mem0.ai/blog/openclaw-vs-hermes-agent-memory-comparison
 - https://memories.sh/openclaw
+- https://metoro.io/blog/openclaw-kubernetes
+- https://milvus.io/ai-quick-reference/what-is-the-openclawmoltbotclawdbot-heartbeat-feature
 - https://milvus.io/blog/openclaw-formerly-clawdbot-moltbot-explained-a-complete-guide-to-the-autonomous-ai-agent.md
 - https://milvus.io/blog/we-extracted-openclaws-memory-system-and-opensourced-it-memsearch.md
+- https://milvusio/blog/openclaw-formerly-clawdbot-moltbot-explained-a-complete-guide-to-the-autonomous-ai-agent.md
+- https://mrprompts.substack.com/p/openclaw-on-windows-the-complete
 - https://nader.substack.com/p/how-to-build-a-custom-agent-framework
 - https://news.qq.com/rain/a/20260203A01H5W00
 - https://newsletter.pragmaticengineer.com/p/the-creator-of-clawd-i-ship-code
 - https://observer.com/2026/02/openclaw-founder-perter-steinberger-join-openai
+- https://oneclickclawd.ai
+- https://openclaw-kr.mintlify.app/tools/thinking
+- https://openclaw-openclaw.mintlify.app/cli/daemon
 - https://openclaw-openclaw.mintlify.app/concepts/gateway
 - https://openclaw-openclaw.mintlify.app/concepts/sessions
+- https://openclaw-openclaw.mintlify.app/platforms/macos
 - https://openclaw-openclaw.mintlify.app/plugins/built-in-extensions
 - https://openclaw.academy/blog/5-prompt-injection-attacks-ai-agent-security
 - https://openclaw.ai
 - https://openclaw.ai/blog/openclaw-agent-skill-workshop
 - https://openclaw.ai/blog/safer-than-yolo-auto-mode-for-exec-approvals
 - https://openclaw.ai/publications/clawhub-security-signals.pdf
+- https://openclawai.io/integrations/imessage
 - https://openclawai.io/skills
 - https://openclawai.io/skills/skill/pr-reviewer
 - https://openclawcases.com/cases/openclaw-github
+- https://openclawcn.com/en/docs/concepts/compaction
 - https://openclawconsult.com/lab/openclaw-clawhavoc-supply-chain
 - https://openclawconsult.com/lab/openclaw-soul-md
 - https://openclawindex.com/projects
 - https://openclawlaunch.com/guides/openclaw-clawhub
 - https://openclawroadmap.com/use-cases-development-code-review.php
+- https://openclawvps.io/blog/openclaw-gateway
 - https://openclawvps.io/blog/openclaw-vs-claude
 - https://pacgenesis.com/openclaw-security-risks-what-security-teams-need-to-know-about-open-claw-in-2026
+- https://petronellatech.com/blog/openclaw-ai-agent-guide
 - https://pickaxe.co/post/openclaw-use-cases-what-makes-it-different
 - https://ppaolo.substack.com/p/openclaw-system-architecture-overview
+- https://provision.ai/openclaw-docker
 - https://pub.towardsai.net/building-an-ai-pr-review-agent-with-openclaw-9787759e9e46
+- https://raw.githubusercontent.com/openclaw/openclaw/main/README.md
 - https://releasebot.io/updates/openclaw
 - https://roadmap.sh/openclaw/security-best-practices
 - https://robotpaper.ai/reference-architecture-openclaw-early-feb-2026-edition-opus-4-6
@@ -2507,6 +4377,7 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://securemolt.com/blog/openclaw-skills-malware-supply-chain
 - https://sfailabs.com/guides/openclaw-heartbeat-scheduling
 - https://shelldex.com/projects/moltworker
+- https://singhajit.com/moltworker-self-hosted-ai-agent
 - https://singhajit.com/openclaw-docker-setup
 - https://singjupost.com/how-i-created-openclaw-the-breakthrough-ai-agent-peter-steinberger-transcript
 - https://skywork.ai/skypage/en/openclaw-ai-memory-system/2049120100986191872
@@ -2519,25 +4390,33 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://steipete.me/posts/2026/openclaw
 - https://swiftcafe.io/posts/openclaw-skill-workshop/en
 - https://systemdesigner.medium.com/building-openclaw-from-scratch-part-3-the-meta-skill-15a50fcb4384
+- https://systemdesigner.medium.com/building-openclaw-from-scratch-part-5-conversation-compaction-c467e41f926f
 - https://systemdesigner.medium.com/building-openclaw-from-scratch-part-7-subagent-system-81e39047496e
 - https://technode.global/2026/04/01/why-openclaw-is-forcing-a-rethink-of-ai-security-trust-and-authority
 - https://thegenios.com/blog/openclaw-vs-hermes-agent
 - https://thehackernews.com/2026/02/clawjacked-flaw-lets-malicious-sites.html
 - https://thenextweb.com/news/hugging-face-clawhub-malware-ai-supply-chain
 - https://tomaszs2.medium.com/openclaw-has-3-513-open-pull-requests-is-it-swamped-7d6701e057bc
+- https://towardsai.com/p/machine-learning/the-ghost-in-your-machine-why-openclaws-local-first-autonomy-beats-the-cloud-every-time
+- https://towardsdatascience.com/run-a-local-llm-with-openclaw-on-your-mac-mini
 - https://trilogyai.substack.com/p/deep-dive-openclaw
 - https://trilogyai.substack.com/p/how-to-manage-your-openclaw-memory
 - https://unit42.paloaltonetworks.com/openclaw-ai-supply-chain-risk
 - https://vectorize.io/articles/openclaw-vs-hermes-agent-memory
 - https://velvetshark.com/openclaw-memory-masterclass
+- https://velvetshark.com/openclaw-multi-model-routing
 - https://victorinollc.com/thinking/openclaw-lifecycle-security-framework
+- https://www.ai.cc/blogs/how-i-set-up-openclaw-on-a-mac-mini
 - https://www.akamai.com/blog/security/clawdbot-openclaw-practical-lessons-building-secure-agents
 - https://www.ampere.sh/blog/openclaw-vs-langchain
 - https://www.analyticsvidhya.com/blog/2026/03/openclaw-vs-claude-code
+- https://www.baytechconsulting.com/blog/openclaw-unleashed-autonomous-agents-enterprise-workflows
 - https://www.betterclaw.io/blog/openclaw-memory-fix
+- https://www.betterclaw.io/blog/openclaw-model-routing
 - https://www.betteryeah.com/blog/openclaw-working-principle-architecture-guide
 - https://www.bitsight.com/blog/openclaw-ai-security-risks-exposed-instances
 - https://www.businessinsider.com/sam-altman-hires-openclaw-creator-peter-steinberger-personal-ai-agents-2026-2
+- https://www.cedricclyburn.com/articles/openclaw-guardrails
 - https://www.chattergo.com/blog/openclaw-deep-dive-architecture-agent-loop
 - https://www.clawea.com/tools/github
 - https://www.cnbc.com/amp/2026/02/15/openclaw-creator-peter-steinberger-joining-openai-altman-says.html
@@ -2553,6 +4432,7 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://www.dench.com/blog/openclaw-github-integration
 - https://www.digitalocean.com/resources/articles/what-are-openclaw-skills
 - https://www.digitalocean.com/resources/articles/what-is-openclaw
+- https://www.docker.com/blog/run-openclaw-securely-in-docker-sandboxes
 - https://www.eastondev.com/blog/en/posts/ai/20260205-openclaw-memory-system
 - https://www.eigent.ai/blog/openclaw-vs-claude-code
 - https://www.elegantsoftwaresolutions.com/blog/openclaw-workspace-markdown-files-guide
@@ -2562,7 +4442,10 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://www.growexx.com/blog/openclaw-custom-skill-development-complete-guide
 - https://www.growexx.com/blog/openclaw-skills-development-guide-for-developers
 - https://www.hiddenlayer.com/research/exploring-the-security-risks-of-ai-assistants-like-openclaw
+- https://www.hivelocity.net/kb/self-hosting-openclaw-guide
 - https://www.hkcert.org/blog/openclaw-s-rapid-adoption-exposes-skills-supply-chain-and-fake-installer-risks-in-a-high-privilege-ai-agent-platform
+- https://www.hostinger.com/support/how-to-install-openclaw-on-hostinger-vps
+- https://www.hostinger.com/tutorials/how-to-optimize-openclaw
 - https://www.hungyichen.com/en/insights/openclaw-agentic-ai-governance
 - https://www.ieee-jas.com/article/doi/10.1109/JAS.2026.126209
 - https://www.ieee-jas.com/en/article/doi/10.1109/JAS.2026.126209
@@ -2570,6 +4453,7 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://www.imperva.com/blog/compromise-openclaw-with-prompt-injections-in-message-objects
 - https://www.isrosa.com/posts/for-lobster-openclaw-tech-architecture-design-philosophy
 - https://www.joumenharzli.com/blog/proactive-ai-agents-the-architecture-behind-openclaw
+- https://www.katonic.ai/blog/nemoclaw-docker-isolation
 - https://www.kevnu.com/en/posts/openclaw-in-depth-analysis-from-architectural-principles-to-security-vulnerabilities-and-alternative-solution-selection
 - https://www.kiteworks.com/secure-email/meta-ai-safety-director-openclaw-rogue-agent-email-deletion
 - https://www.lbsocial.net/post/openclaw-github-ai-teammate
@@ -2582,7 +4466,9 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://www.linkedin.com/pulse/openclaw-governance-failure-we-saw-coming-paul-goldman-vzuyc
 - https://www.mager.co/blog/2026-02-03-openclaw
 - https://www.maximem.ai/openclaw/memory-comparison
+- https://www.meta-intelligence.tech/en/insight-openclaw-gateway
 - https://www.meta-intelligence.tech/en/insight-openclaw-multi-agent
+- https://www.meta-intelligence.tech/en/insight-openclaw-security
 - https://www.mindstudio.ai/blog/post-prompting-era-proactive-ai-agents
 - https://www.mindstudio.ai/blog/progressive-disclosure-ai-agents-context-management
 - https://www.newsletter.swirlai.com/p/agent-skills-progressive-disclosure
@@ -2592,29 +4478,44 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://www.penligent.ai/hackinglabs/openclaw-security-what-it-takes-to-run-an-ai-agent-without-losing-control
 - https://www.penligent.ai/hackinglabs/the-definitive-openclaw-security-survival-manual-architecture-hardening-and-automated-red-teaming
 - https://www.penligent.ai/hackinglabs/the-openclaw-prompt-injection-problem-persistence-tool-hijack-and-the-security-boundary-that-doesnt-exist
+- https://www.pingcap.com/blog/local-first-rag-using-sqlite-ai-agent-memory-openclaw
+- https://www.ququ123.top/en/2026/02/openclaw-automation
+- https://www.ququ123.top/en/2026/02/openclaw-gateway-concepts
 - https://www.ququ123.top/en/2026/02/openclaw-multi-agent
+- https://www.ramnode.com/guides/openclaw
 - https://www.reddit.com/r/AI_Agents/comments/1quy0b9/8_ways_openclaw_reduces_context_loss_in
 - https://www.reddit.com/r/AI_Agents/comments/1r3u98p/openclaw_security_is_worse_than_i_expected_and_im
 - https://www.reddit.com/r/ClaudeAI/comments/1tsok8r/system_prompts_are_too_blunt_the_3level
+- https://www.reddit.com/r/LocalLLM/comments/1qt148w/howto_point_openclaw_at_a_local_setup
 - https://www.reddit.com/r/clawdbot/comments/1rbqsnx/why_the_overwhelming_choice_of_mac_minis_to_run
 - https://www.reddit.com/r/cybersecurity/comments/1s2f1r5/
 - https://www.reddit.com/r/cybersecurity/comments/1s2f1r5/i_audited_all_31000_skills_on_openclaws_clawhub
 - https://www.reddit.com/r/myclaw/comments/1quwlvl/openclaws_founder_peter_steinberger_interview_how
 - https://www.reddit.com/r/openclaw/comments/1r1zk45/patterns_ive_learned_running_openclaw_247_for_2
+- https://www.reddit.com/r/openclaw/comments/1r20dzo/is_openclaw_actually_proactive_or_am_i_doing
+- https://www.reddit.com/r/openclaw/comments/1r78fy6/i_asked_opus_46_to_give_me_a_guide_to_reduce
+- https://www.reddit.com/r/openclaw/comments/1rcl9oz/how_to_drastically_reduce_token_usage_in_openclaw
+- https://www.reddit.com/r/openclaw/comments/1rdlcot/
 - https://www.reddit.com/r/openclaw/comments/1rdlcot/im_an_ai_agent_running_on_openclaw_247_heres_my
+- https://www.reddit.com/r/openclaw/comments/1rhcgxp/how_to_make_openclaw_agents_proactive_instead_of
 - https://www.reversinglabs.com/blog/openclaw-ai-agents-black-hole-risks
 - https://www.scworld.com/brief/massive-openclaw-supply-chain-attack-floods-openclaw-with-malicious-skills
 - https://www.silverfort.com/blog/clawhub-vulnerability-enables-attackers-to-manipulate-rankings-to-become-the-number-one-skill
+- https://www.sitepoint.com/how-to-set-up-openclaw-on-a-mac-mini
 - https://www.sonicwall.com/blog/openclaw-auth-token-theft-leading-to-rce-cve-2026-25253
 - https://www.sphereinc.com/blogs/the-complete-openclaw-setup-installation-guide
 - https://www.stack-junkie.com/blog/how-to-write-an-effective-agents-md-for-openclaw
+- https://www.stack-junkie.com/blog/openclaw-docker-secure-setup
 - https://www.stack-junkie.com/blog/openclaw-extended-universe
 - https://www.stack-junkie.com/blog/openclaw-subagent-orchestration
 - https://www.stack-junkie.com/blog/openclaw-system-prompt-design-guide
 - https://www.stack-junkie.com/blog/openclaw-workspace-architecture
 - https://www.stanza.dev/courses/openclaw-automation/sub-agents/openclaw-automation-sessions-spawn
+- https://www.stanza.dev/courses/openclaw-production/production-deploy/openclaw-production-docker-deploy
 - https://www.stanza.dev/courses/openclaw/gateway-fundamentals/openclaw-configuration-and-binding
 - https://www.stanza.dev/courses/openclaw/sessions-memory/openclaw-session-scoping-isolation
+- https://www.tencentcloud.com/techpedia/139192
+- https://www.tencentcloud.com/techpedia/140623
 - https://www.termdock.com/en/blog/clawhub-malicious-skills-incident
 - https://www.trendmicro.com/en_us/research/26/c/cisos-in-a-pinch-a-security-analysis-openclaw.html
 - https://www.turingcollege.com/blog/openclaw
@@ -2627,6 +4528,9 @@ always-on 放大了风险敞口(7×24 无人监督 + 真实系统权限 + 对外
 - https://www.zentera.net/blog/ai-agent-isolation-openclaw-claw-chain
 - https://www.zylon.ai/resources/blog/what-is-openclaw-a-practical-guide-to-the-agent-harness-behind-the-hype
 - https://x.com/sama/status/2023150230905159801
+- https://xaicontrol.com/en/blog/openclaw-macos
 - https://xcloud.host/proactive-openclaw-agent-workflows
+- https://yu-wenhao.com/en/blog/2026-02-01-openclaw-deploy-cost-guide
 - https://zedly.ai/blog/openclaw-human-approval-for-sensitive-actions
+- https://zenvanriel.com/ai-engineer-blog/openclaw-sandboxing-docker-isolation-guide
 - https://zhuanlan.zhihu.com/p/2005943466006438841
