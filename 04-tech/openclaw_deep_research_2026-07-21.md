@@ -9,13 +9,13 @@ source: Tavily 调研 + arxiv 安全论文(2603.27517) + 官方仓库 + awesome-
 
 # OpenClaw 全维度技术调研
 
-> 调研日期:2026-07-21 | 来源:Tavily 多轮搜索 + arxiv 安全论文(2603.27517) + 官方仓库 + awesome-openclaw 生态 + 3 个 Workflow 并行深挖(11 维度)
+> 调研日期:2026-07-21 | 来源:Tavily 多轮搜索 + arxiv 安全论文(2603.27517) + 官方仓库 + awesome-openclaw 生态 + 5 个 Workflow 并行深挖(11 维度)
 
 OpenClaw 是由 Peter Steinberger(@steipete,PSPDFKit 创始人,奥地利)创立的开源自托管 AI agent 框架,定位为"agent 操作系统"而非 chatbot wrapper--模型负责推理,OpenClaw 负责状态、控制与执行。前身 Clawdbot(2024 初)-> Moltbot(2026/01,商标纠纷)-> OpenClaw(2026/01/29)。TypeScript/Node.js 22+,MIT 许可,官方仓库 github.com/openclaw/openclaw。2026/02 relaunch 后数周内 stars 破 20 万(峰值 383K stars / 80.6K forks / 2721 contributors / 周活 200 万),被 Greptile 称为"GitHub 历史增长最快仓库"。
 
 其爆火并非模型能力跃迁,而是把"本地优先、消息原生、模型无关"三大反主流哲学彻底贯彻到工程:用户通过 WhatsApp/Telegram/iMessage 等已有 IM 触达一个 7×24 在线、拥有自己电脑与凭据的常驻实体。研究 OpenClaw 的价值在于:它用 harness engineering(智能体束缚工程)把无约束 LLM 驯化为可控、可审计、生产级可靠的自主系统,印证了黄仁勋"基础设施比模型重要"的论断;同时它的供应链投毒、公开暴露与企业禁用潮,又为 AI agent 时代的安全治理提供了最完整的反面教材与压力测试场。
 
-本文从 11 个维度全息拆解 OpenClaw:设计理念、架构体系、核心解决方案、PR 审核合并自动化、安全争议与生态、Context 处理、智能体编排、安全边界、Memory 系统、Build Skills、自我迭代,提炼可复用的范式与经验教训。
+本文从 12 个维度全息拆解 OpenClaw:设计理念、架构体系、核心解决方案、PR 审核合并自动化、安全争议与生态、Context 处理、网关处理、智能体编排、安全边界、Memory 系统、Build Skills、自我迭代,提炼可复用的范式与经验教训。
 
 ---
 

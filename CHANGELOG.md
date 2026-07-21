@@ -2,6 +2,14 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-21 · ingest 新增（深层相似性）
+
+**操作**：新增认知/学习方法论文档入库 `06-workflows/`。
+
+- 新增 `deep_similarity_training_2026-07-21.md`：深层相似性(结构映射/类比推理)全维度浅扫--理论(Gentner/Holyoak/Hofstadter) + 经典实验(Gick & Holyoak 辐射问题 / Chi 专家新手分类) + 训练方法 + 测试评分系统 + 反馈优化 Loop + 8-12 周可执行训练方案
+- 调研模式：初版广度浅扫(每维度核心观点 + 依据,未深度挖掘),按 [[large-research-workflow-patterns]] 两阶段方法论;用户确认不需要二版深挖
+- 更新 `06-workflows/_index.md`(2 -> 3 篇)、`INDEX.md`(新增"认知/学习方法"概念交叉)
+
 ## 2026-07-21 · ingest 追加（OpenClaw 补充 Loop engineering）
 
 **操作**：为 `04-tech/openclaw_deep_research_2026-07-21.md` 追加第二十章 Loop engineering。
