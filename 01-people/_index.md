@@ -1,6 +1,6 @@
 # 01-people · 人物思想深度调研
 
-> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 21 篇。
+> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 22 篇。
 > 交叉网络见 [[INDEX]]。
 
 ## a16z 合伙人系列
@@ -20,6 +20,7 @@
 | [[leopold_aschenbrenner_analysis]] | Leopold：瓶颈轮动 |
 | [[teknium_nous_research_analysis]] | Teknium/Nous：黏土论·去中心化 |
 | [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]] | 李飞飞：空间智能与世界模型 |
+| [[demis_hassabis_analysis]] | Demis Hassabis：solve intelligence·AlphaFold·AGI |
 
 ## 创业者 / 实干派
 | 文件 | 一句话 |

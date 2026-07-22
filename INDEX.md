@@ -20,7 +20,7 @@
 [[anjney_midha_a16z_analysis]] · [[david_george_a16z_analysis]] · [[marc_andreessen_a16z_analysis]] · [[martin_casado_a16z_analysis]] · [[sarah_wang_a16z_analysis]] → 合成于 [[a16z_five_partners_synthesis]]
 
 ### 研究者 / 科学家
-[[ilya_sutskever_analysis]]（规模结束·价值函数）· [[leopold_aschenbrenner_analysis]]（瓶颈轮动）· [[teknium_nous_research_analysis]]（黏土论·去中心化）· [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]（空间智能）
+[[ilya_sutskever_analysis]]（规模结束·价值函数）· [[leopold_aschenbrenner_analysis]]（瓶颈轮动）· [[teknium_nous_research_analysis]]（黏土论·去中心化）· [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]（空间智能）· [[demis_hassabis_analysis]]（solve intelligence·AlphaFold·AGI）
 
 ### 创业者 / 实干派
 [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]]（Glean）· [[pieter_levels_deep_research]]（独立开发）· [[peter_steinberger_deep_research]]（OpenClaw 创始人） · [[boris_cherny_analysis]]（Claude Code 之父）
@@ -41,7 +41,8 @@
 - **安全 / 治理** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[Cresta_2026系统性总结]] · [[训练公开人物AI大模型_完整实现与测评方案]]
 - **算力 / 半导体** ← [[semiconductor_2026_report]] · [[shunwang_compute_power_analysis]] · [[jensen_huang_thoughts_analysis]]
 - **大模型趋势** ← [[大模型收敛时代]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
-- **AGI 时间线 / 前沿安全** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
+- **AGI 时间线 / 前沿安全** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]] · [[demis_hassabis_analysis]]
+- **AI for Science / 世界模型** ← [[demis_hassabis_analysis]] · [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]
 - **宏观 / 货币政策** ← [[ben_bernanke_thoughts_analysis]] · [[serenity_tweets_analysis]]
 - **AI 治理 / 劳动力市场** ← [[ben_bernanke_thoughts_analysis]] · [[anthropic_openai_ai_forecasting_depts_analysis]] · [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]
 - **大数据 / 数仓** ← [[spark-tuning-guide]] · [[sparksql_vs_rdd_in_datawarehouse]] · [dataworks 项目](./04-tech/dataworks/README.md)

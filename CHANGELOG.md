@@ -2,6 +2,17 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-22 · ingest 新增（Demis Hassabis）
+
+**操作**：新增人物思想调研入库 `01-people/`。
+
+- 新增 `demis_hassabis_analysis.md`：Demis Hassabis 背景生平与学术成就（象棋神童/游戏设计/剑桥双第一/UCL 认知神经科学/DeepMind 创立/AlphaGo/AlphaFold/2024 诺奖）、商业/社会工程与机构演进（Google 收购/AlphaFold 开源/Isomorphic Labs/Google DeepMind 合并/Gemini/AI 安全治理）、个人/机构/产品思想演进（游戏AI->RL->世界模型->规划->agent->AGI；谨慎乐观+10倍安全投入；信息本体论与诺奖猜想；AGI 时间线从"几十年"前移至"奇点山脚"）、近 360 天播客与商业访谈（60 Minutes/达沃斯/I/O 2026 等）思想总结 + 故事叙述手法、近 360 天社交媒体（2026-07-14 FINRA 式前沿 AI 监管框架 X 长文、Platform 37 署名博文）思想总结 + 叙述手法、近 360 天重大事件双轴时间轴的系统化梳理
+- 切入点：2024 诺奖 + 2026 Mallaby 传记《The Infinity Machine》+ 近 360 天 AGI 时间线前移与 FINRA 监管框架
+- 事实订正：象棋 13 岁达 master（非 8 岁）、Black & White 原作（非续作）、封爵 2024-03-28（非新年荣誉）
+- 数据来源：Workflow（6 agent 并行调研 + 主 agent 一次性整合）经 Tavily MCP + curl + Wikipedia API（Tavily 套餐中途耗尽后兜底）；约 700 行
+- 信源限制：Tavily 套餐额度中途耗尽、X 反爬、部分 JS 站点未一手渲染，均已在文档 §0/§9 诚实标注
+- 更新 `01-people/_index.md`（21->22 篇）、`INDEX.md`（研究者/科学家人物网络 + AGI 时间线/AI for Science 概念交叉）
+
 ## 2026-07-22 · ingest 新增（Claude 记忆全流程）
 
 **操作**：新增工作方法论文档入库 `06-workflows/`。
