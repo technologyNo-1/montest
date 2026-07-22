@@ -47,6 +47,7 @@
 - **大数据 / 数仓** ← [[spark-tuning-guide]] · [[sparksql_vs_rdd_in_datawarehouse]] · [dataworks 项目](./04-tech/dataworks/README.md)
 - **NL2SQL / 语义层** ← [dataworks](./04-tech/dataworks/README.md) · [[字节大数据面试_技术文字稿_DB-GPT自然语言取数层]]
 - **认知 / 学习方法** ← [[deep_similarity_training_2026-07-21]]（深层相似性·类比推理）
+- **记忆 / 知识管理** ← [[claude_memory_全流程_2026-07-22]]（Claude 三层记忆·auto-memory/CLAUDE.md/vault 治理）
 
 ## 待 lint 完善
 

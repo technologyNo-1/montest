@@ -2,6 +2,15 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-22 · ingest 新增（Claude 记忆全流程）
+
+**操作**：新增工作方法论文档入库 `06-workflows/`。
+
+- 文档：`claude_memory_全流程_2026-07-22.md`
+- 内容：Claude Code 三层记忆体系（auto-memory / CLAUDE.md / vault）的创建·管理·治理全流程，结合本机实测（20 条 auto-memory、vault 8 类、4 个 MCP、obsidian skills、auto-memory 按启动目录隔离机制）
+- 索引：更新 `06-workflows/_index.md`（3 篇增至 4 篇）；`INDEX.md` 新增「记忆 / 知识管理」交叉入口
+- 关联 auto-memory：`personal-knowledge-vault` / `vault-auto-fix-format` / `claude-code-session-hygiene` / `change-impact-rollback-workflow`
+
 ## 2026-07-21 · 升级（深层相似性 A -> B 档）
 
 **操作**：将 `deep_similarity_training_2026-07-21.md` 从 A 档浅扫升级为 B 档中度整合。
