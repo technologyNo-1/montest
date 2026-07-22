@@ -2,6 +2,23 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-23 · 重做（Claude 记忆全流程,从官方源头出发）
+
+**操作**：删除旧版 `claude_memory_全流程_2026-07-22.md`,重做并入库 `06-workflows/`。
+
+- 新文档：`claude_memory_全流程_2026-07-23.md`(替换旧版)
+- 重做理由：旧版跳过官方源头、直接本地实测,是经验主义;用户评"做得很差劲",要求先查 Claude 官网 memory 设计与最佳实践、再结合本地泛化
+- 新版结构(从权威源头出发,主 agent 一次性整合,非 Workflow):
+  1. Claude 官方 memory 设计(CLAUDE.md 分层拼接/auto memory just-in-time 前 200 行·25KB/Claude.ai 消费级/API memory tool+stores/官方 Include·Exclude 最佳实践/context 与 compaction 存活表)
+  2. 复杂 agent 架构下使用与调优(orchestrator-worker 隔离+浓缩回传/context engineering·context rot/MEMORY PROTOCOL/长程 harness initializer+coding agent/subagent memory 边界)
+  3. 论文与落地项目(CoALA 四分法/MemGPT/Generative Agents/Reflexion/A-MEM/Mem0/Zep/GraphRAG/Letta;7 个 coding agent + 4 个框架对比)
+  4. 多 agent 生产级设计理念(共享 vs 私有/持久化一致性·dreaming/记忆即独立层/企业三层规则/memory vs RAG vs fine-tuning 取舍)
+  5. 结合本地泛化(CoALA 映射诊断偏科/机制印证/4 MCP 角色/7 条可落地建议)
+- 数据来源:3 subagent 并行搜集原始信息(Tavily 配额耗尽后改官方站 .md 端点 + arxiv + Jina Reader),主 agent(opus)一次性整合
+- 信源:全部 L0 官方一手 + L1 arxiv + L2 项目 docs;Cursor/Devin/# 快捷键等未核实点如实标注
+- 索引:更新 `06-workflows/_index.md`、`INDEX.md`(替换旧引用)
+- 关联 auto-memory:`feedback-claude-memory-doc-approach`(重做法反馈)、`feedback-research-workflow-paused`(本次未用 Workflow)
+
 ## 2026-07-22 · ingest 新增（Demis Hassabis）
 
 **操作**：新增人物思想调研入库 `01-people/`。
@@ -13,7 +30,7 @@
 - 信源限制：Tavily 套餐额度中途耗尽、X 反爬、部分 JS 站点未一手渲染，均已在文档 §0/§9 诚实标注
 - 更新 `01-people/_index.md`（21->22 篇）、`INDEX.md`（研究者/科学家人物网络 + AGI 时间线/AI for Science 概念交叉）
 
-## 2026-07-22 · ingest 新增（Claude 记忆全流程）
+## 2026-07-22 · ingest 新增（Claude 记忆全流程）⛔ 已被 2026-07-23 重做替换（文件已删,见上）
 
 **操作**：新增工作方法论文档入库 `06-workflows/`。
 
