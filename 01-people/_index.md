@@ -1,6 +1,6 @@
 # 01-people · 人物思想深度调研
 
-> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 22 篇。
+> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 23 篇。
 > 交叉网络见 [[INDEX]]。
 
 ## a16z 合伙人系列
@@ -29,6 +29,7 @@
 | [[pieter_levels_deep_research]] | Pieter Levels 独立开发 |
 | [[peter_steinberger_deep_research]] | Peter Steinberger |
 | [[boris_cherny_analysis]] | Claude Code 之父 Boris Cherny |
+| [[gavin_uberti_analysis]] | Etched/Sohu:Transformer 专用 ASIC 思想演进 |
 
 ## 产业领袖
 | 文件 | 一句话 |

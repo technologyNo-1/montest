@@ -2,6 +2,18 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-23 · ingest 新增（Gavin Uberti / Etched）
+
+**操作**：新增人物思想调研入库 `01-people/`。
+
+- 新增 `gavin_uberti_analysis.md`:Gavin Uberti(Etched CEO)背景、主要成就(Etched 机构演进/Sohu Transformer 专用 ASIC/融资累计 ~$1.1B/$10.3B 估值 Series C)、个人/机构/产品思想演进(为什么 ASIC 而非 GPU、scaling 判断、推理算力经济、模型架构演进[从极端单架构到 MoE+Mamba]、AGI/竞争格局、机构战略从芯片到 GW 级集群)、近 360 天访谈(ILTB Ep.480/Bloomberg)+ 重大事件时间轴
+- 切入点:2026-06-30 出隐身(A0 流片成功 + $1B 合同)+ 2026-07-23 Series C $10.3B(Sequoia 领投,当日公告)
+- 主线:思想主线高度一致(规模->超智、推理算力远超训练、专业化必然、全栈护城河);最显著演进在架构赌注(2024 极端单架构 -> 2026 主动扩展 MoE+Mamba + LVI/CSM 全栈,产品从芯片升级为 GW 级 inference cluster)
+- 数据来源:3 subagent 并行搜集(Tavily 配额耗尽后 Jina/Brave/DDG 兜底)+ 主 agent 一次性整合(非 Workflow)
+- 信源限制:Tavily 耗尽、X 反爬、Colossus transcript 登录墙、Dwarkesh 确认未上过;8 档点名播客窗口内无专属访谈,均如实标注;未核实项见文末附 B
+- 更新 `01-people/_index.md`(22->23 篇)、`INDEX.md`(算力/半导体交叉入口 +[[gavin_uberti_analysis]])
+- 关联:[[feedback-people-analysis-structure]](思想演进为重点)、[[feedback-research-workflow-paused]](本次未用 Workflow)
+
 ## 2026-07-23 · 重做（Claude 记忆全流程,从官方源头出发）
 
 **操作**：删除旧版 `claude_memory_全流程_2026-07-22.md`,重做并入库 `06-workflows/`。
