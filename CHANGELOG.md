@@ -2,6 +2,16 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-25 · ingest 新增（SK海力士 HBM4E 核心供应商深度调研）
+
+**操作**：新增行业调研入库 `02-industry/`。
+
+- 新增 `hbm4e_supplier_deep_research_2026-07-25.md`:SK海力士 HBM4E 全行业核心供应商深度调研(材料 9 环节 + 设备/制造/IP 8 环节),含激进扩产到 2030 最受益细分推理
+- 核心:最受益细分 = 键合设备环节(TC Bonder Hanmi/ASMPT 扩产期爆发 -> hybrid bonding Besi 2030 前后接棒),胜在"海力士不自研键合机"无自研替代风险;材料端 Namics 独家协议到期是最大变量(华海诚科潜在二供);华海增收不增利(营收 +38% / 净利 -39%)
+- 数据来源:2 个 Agent 并行调研(Tavily 超额,WebFetch + DDG 兜底)+ 主 agent 深度推理整合;交错式(先推理假设 Besi 垄断 -> 验证修正为 Hanmi 主导 TC Bonder)
+- 索引:更新 `02-industry/_index.md`(7->8 篇)、`INDEX.md` 算力/半导体交叉入口
+- 关联:[[semiconductor_2026_report]](HBM 宏观市场)
+
 ## 2026-07-24 · ingest 新增（中金 AI 金融时刻投资思考维度）
 
 **操作**：新增行业分析入库 `02-industry/`。

@@ -10,6 +10,7 @@
 | [[sparksql_vs_rdd_in_datawarehouse]] | SparkSQL vs RDD 在数仓 |
 | [[brain_agent_primer]] | Brain Agent 入门 |
 | [[openclaw_deep_research_2026-07-21]] | OpenClaw 全维度技术调研（20 维度） |
+| [发动机非线性动力学调研](./engine_nonlinear_dynamics/README.md) | 全维度调研+可视化+华尔街适用性(机制分析可迁移,点预测不可) |
 
 ## dataworks/ · 端到端智能数据分析平台（NL -> 语义层 -> SQL）
 | 文件 | 一句话 |
