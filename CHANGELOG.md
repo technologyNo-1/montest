@@ -2,6 +2,17 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-25 · ingest 新增（HBM4E 全产业链深度调研 v2,权威方法论）
+
+**操作**:新增 `02-industry/hbm4e_investment_deep_research_2026-07-25.md`。
+
+- 基于权威方法论框架(Gartner/IDC/麦肯锡/SemiAnalysis/Porter 提炼)12 维度 + 6 步顺序 + 三角验证 + 可证伪
+- 4 Agent 并行调研(主体/工艺瓶颈/供应商全景/需求TAM+CAGR+机构观点),主动跟踪状态(吸取上次 Agent 丢失教训)
+- 主线结论:最值得投资 = 先进封装设备链(CoWoS/HB/Besi)+ 检测/量测(KLA/Camtek/Onto),三视角(瓶颈/CAGR/议价权)收敛 + 机构共识(Atlas Peak 价值迁移)
+- 关键证伪:球粉 CAGR 4-8%(非 35-50%+)、2026 末供过于求被证伪(实际短缺到 2027-28)、先发优势被追平
+- 数据来源:SemiAnalysis/Atlas Peak/TrendForce/TechInsights/公司财报,三角验证 + 等级标注
+- 关联:[[semiconductor_2026_report]]
+
 ## 2026-07-25 · 删除（HBM4E 调研报告,质量不及格物理删除）
 
 **操作**:物理删除 `02-industry/hbm4e_supplier_deep_research_2026-07-25.md`,同步移除 `_index.md`/`INDEX.md` 条目。

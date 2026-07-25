@@ -39,7 +39,7 @@
 - **Token 经济** ← [[ai_token_industry_deep_research]] · [[shunwang_compute_power_analysis]] · [[semiconductor_2026_report]] · [[personal_token_strategy]]
 - **AI Agent** ← [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]] · [[Cresta_2026系统性总结]] · [[AI_Agent创业策略报告_2026]] · [[brain_agent_primer]] · [[openclaw_deep_research_2026-07-21]]
 - **安全 / 治理** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[Cresta_2026系统性总结]] · [[训练公开人物AI大模型_完整实现与测评方案]]
-- **算力 / 半导体** ← [[semiconductor_2026_report]] · [[shunwang_compute_power_analysis]] · [[jensen_huang_thoughts_analysis]] · [[gavin_uberti_analysis]]
+- **算力 / 半导体** ← [[semiconductor_2026_report]] · [[hbm4e_investment_deep_research_2026-07-25]] · [[shunwang_compute_power_analysis]] · [[jensen_huang_thoughts_analysis]] · [[gavin_uberti_analysis]]
 - **AI 金融 / 融资周期** ← [[中金AI金融时刻_美股A股投资思考维度_2026-07-24]]（AI capex 债务扩张·3.5万亿融资·美股A股映射）
 - **大模型趋势** ← [[大模型收敛时代]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
 - **AGI 时间线 / 前沿安全** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]] · [[demis_hassabis_analysis]]
