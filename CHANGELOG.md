@@ -2,6 +2,14 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-25 · 删除（HBM4E 调研报告,质量不及格物理删除）
+
+**操作**:物理删除 `02-industry/hbm4e_supplier_deep_research_2026-07-25.md`,同步移除 `_index.md`/`INDEX.md` 条目。
+
+- 原因:任务完全不及格--D1-D4 Agent 丢失、按权威方法论缺 6 维度(市场边界/周期定位/需求TAM/成本/财务验证/政策地缘)、数据单源无三角验证、无可证伪设计、违反下手顺序(直接钻供应商跳过需求分析)
+- 方法论框架已建立(12 维度+6 步顺序+三角验证,从 Gartner/IDC/麦肯锡/SemiAnalysis/Porter 提炼),待存 06-workflows 后按此重做
+- 教训:动手具体产业前,先建立有依据的调研方法论;Agent 派出后要主动跟踪状态,不能假设"还在跑"
+
 ## 2026-07-25 · 重做（HBM4E 全产业链深度调研,D1-D7 + R1-R6）
 
 **操作**:覆盖重写 `02-industry/hbm4e_supplier_deep_research_2026-07-25.md`。
