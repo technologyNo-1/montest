@@ -2,6 +2,18 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-25 · ingest 新增（CXMT HBM 全产业链深度调研,国产替代视角）
+
+**操作**:新增 `02-industry/cxmt_hbm_investment_deep_research_2026-07-25.md`。
+
+- 基于权威方法论框架(12维度+6步+三角验证+可证伪),4 Agent 并行调研(主体/工艺瓶颈/供应商/需求CAGR机构观点)
+- CXMT 特殊性:追赶者+出口管制,投资逻辑=国产替代(非全球供应链,与海力士HBM4E根本不同)
+- 主线结论:最值得投资=国产上游设备/材料商(非CXMT本身,因商业悖论:IPO不投HBM、HBM短期不赚钱)
+- 三视角收敛:拓荆科技(混合键合+PECVD+订单+54%,唯一三视角交集)+华海诚科GMC(中期弹性)+设备四强(短期确定性)
+- 扩产周期最长+溢价最强上游=键合设备(拓荆Dione 300国产突破)
+- 关键修正:上次CXMT HBM3 parity不准确,实际落后2-3年(整体3-4年)
+- 关联:[[semiconductor_2026_report]]、[[hbm4e_investment_deep_research_2026-07-25]]
+
 ## 2026-07-25 · ingest 新增（HBM4E 全产业链深度调研 v2,权威方法论）
 
 **操作**:新增 `02-industry/hbm4e_investment_deep_research_2026-07-25.md`。
