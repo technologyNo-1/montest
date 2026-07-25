@@ -7,7 +7,7 @@
 |---|---|
 | [[AI_Agent创业策略报告_2026]] | AI Agent 创业策略 |
 | [[semiconductor_2026_report]] | 半导体 2026 报告 |
-| [[hbm4e_supplier_deep_research_2026-07-25]] | SK海力士 HBM4E 核心供应商深度调研 |
+| [[hbm4e_supplier_deep_research_2026-07-25]] | SK海力士 HBM4E 全产业链深度调研 |
 | [[大模型收敛时代]] | 大模型收敛时代 |
 | [[MIT_AI_专业近两年深度调研报告_2024-2026]] | MIT AI 专业近两年调研 |
 | [[Cresta_2026系统性总结]] | Cresta（客户对话 AI Agent）公司调研 |
