@@ -2,6 +2,18 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-26 · ingest 新增（Sergey Levine 个人思想演进深度调研）
+
+**操作**:新增 `01-people/sergey_levine_analysis.md`。
+
+- 调研对象:Sergey Levine,UC Berkeley 副教授(Harvey E. Wagner 讲席)+ Physical Intelligence 联合创始人/首席科学家,深度 RL 用于机器人控制先驱
+- 2 subagent 并行搜集(sonnet 学术事实 + opus 思想演进纵深),主 agent 复用 Pi 调研已抓的 Dwarkesh/LinkedIn/TechCrunch 三场原话,Tavily 耗尽后 r.jina.ai/WebFetch/DDG 兜底
+- 思想演进为骨架主干(六时期收束):PhD 的 GPS -> 2016 端到端"像素到力矩" -> 2018 SAC 最大熵 -> 2018-21 离线 RL(CQL/AWAC/IQL/D4RL,最重要学术贡献) -> 2022-24 RT-X/DROID 大规模数据转向 -> 2024 VLA/π0"阿波罗计划"
+- 8 条贯穿哲学命题 + 1 元命题("通用性=改进方式的通用性",把整条学术线统一);近一年推进:VLA 必须叠 RL / 瓶颈上移到中间层推理(标注>遥操) / 通用性元定义
+- 学术:research.com D-Index 153、引用 ~9.8 万、世界 CS 第 33;PECASE 2025(Biden 宣布);MAML/TRPO/SAC 等高引;学生含 Chelsea Finn/Haarnoja/Aviral Kumar 等
+- 近 360 天两座主峰:Dwarkesh 2025-09-12 + Colossus 2026-03-31(原话经两份综述交叉印证,非逐字稿直取,已标注)
+- 关联:[[physical_intelligence_analysis]]、[[demis_hassabis_analysis]]、[[ilya_sutskever_analysis]]
+
 ## 2026-07-26 · ingest 新增（Physical Intelligence π 机构与思想演进调研）
 
 **操作**:新增 `01-people/physical_intelligence_analysis.md`。
