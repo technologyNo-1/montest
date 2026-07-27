@@ -2,6 +2,18 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-26 · ingest 新增（Physical Intelligence π 机构与思想演进调研）
+
+**操作**:新增 `01-people/physical_intelligence_analysis.md`。
+
+- 调研对象:Physical Intelligence (π),"机器人领域的 OpenAI",2024-03 创立,通用机器人 VLA 基础模型
+- 2 subagent 并行搜集(sonnet 事实型 + opus 思想演进),Tavily 耗尽后 r.jina.ai/WebFetch/DDG 兜底
+- 主线:思想演进为骨架主干——π0(可学会)→π0.5(可泛化)→π*0.6(RL 攻可部署)→π0.7(组合泛化,GPT-3 时刻);商业上抵抗过早商业化、做机器人 API 层,反向区隔 Skild/Figure/Tesla
+- 4 场深度访谈逐字稿原话引述(Dwarkesh×Levine / Sequoia×Hausman+Springenberg / Finn AI Startup School / LinkedIn×Levine)
+- 融资四轮:种子 $70M → A $400M@$2.4B → B $600M@$5.6B → C ~$1B@$11B(在谈)
+- 信源差异已取多数派(成立年份/创始人名单/各轮领投方),存疑项列文末 §5
+- 关联:[[demis_hassabis_analysis]]、[[gavin_uberti_analysis]]、[[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]
+
 ## 2026-07-25 · ingest 新增（CXMT HBM 全产业链深度调研,国产替代视角）
 
 **操作**:新增 `02-industry/cxmt_hbm_investment_deep_research_2026-07-25.md`。
