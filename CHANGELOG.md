@@ -2,6 +2,18 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-07-26 · ingest 新增（陶哲轩 Terence Tao 个人思想演进深度调研）
+
+**操作**:新增 `01-people/terence_tao_analysis.md`。
+
+- 调研对象:陶哲轩,UCLA 杰出教授(菲尔兹奖 2006、Green-Tao 定理/压缩感知/随机矩阵)、IPAM Director of Special Projects、PCAST 成员;非 AI 从业者,而是顶尖数学家对 AI 介入数学的观察者/实践者
+- 2 subagent 并行搜集(sonnet 学术事实 + opus 思想演进),发现 Tao 自维护 tao-web 金矿(Claude 起草、本人审阅的 AI 观点 living summary + 2026-07-23 逐字访谈),Tavily 耗尽后 r.jina.ai/WebFetch/DDG 兜底
+- 思想演进为骨架主干(七阶段):2014"编译错误"预言 -> 2023"2026 共同作者"预言+概率核+比较优势 -> 2024"平庸但不无能的研究生" -> 2025 验证过滤器+IMO 金牌拐点 -> 2025-12 Erdős #1026 被 Aristotle+Lean 自主解 -> 2026-03 ChatGPT Pro 共同贡献对偶证明(预言兑现)+"ready for primetime" -> 2026-04 "job description changing"+proof abundance 三段论 -> 2026-07 coding agent 五条件论
+- 10 条核心命题,承重墙="验证是让不可靠工具有用的唯一过滤器";数学哲学底色(理解为本/实验为法/协作为体/比较优势/工具可上移)是 AI 立场的底座
+- 关键订正(两 subagent 交叉验证):Erdős #1026(非 #126);Jacobian 反例由 Claude Fable 5 找到;IPAM ready for primetime 是 2026-03-04~06
+- 学术:560 篇论文+19 本书;Fields/Breakthrough/MacArthur;2026 Companion of the Order of Australia;PCAST 2021
+- 关联:[[demis_hassabis_analysis]]、[[sergey_levine_analysis]]、[[ilya_sutskever_analysis]]
+
 ## 2026-07-26 · ingest 新增（Sergey Levine 个人思想演进深度调研）
 
 **操作**:新增 `01-people/sergey_levine_analysis.md`。

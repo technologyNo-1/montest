@@ -20,7 +20,7 @@
 [[anjney_midha_a16z_analysis]] · [[david_george_a16z_analysis]] · [[marc_andreessen_a16z_analysis]] · [[martin_casado_a16z_analysis]] · [[sarah_wang_a16z_analysis]] → 合成于 [[a16z_five_partners_synthesis]]
 
 ### 研究者 / 科学家
-[[ilya_sutskever_analysis]]（规模结束·价值函数）· [[leopold_aschenbrenner_analysis]]（瓶颈轮动）· [[teknium_nous_research_analysis]]（黏土论·去中心化）· [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]（空间智能）· [[demis_hassabis_analysis]]（solve intelligence·AlphaFold·AGI）· [[sergey_levine_analysis]]（深度RL机器人·离线RL·π0 VLA·Pi 首席科学家）
+[[ilya_sutskever_analysis]]（规模结束·价值函数）· [[leopold_aschenbrenner_analysis]]（瓶颈轮动）· [[teknium_nous_research_analysis]]（黏土论·去中心化）· [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]（空间智能）· [[demis_hassabis_analysis]]（solve intelligence·AlphaFold·AGI）· [[sergey_levine_analysis]]（深度RL机器人·离线RL·π0 VLA·Pi 首席科学家）· [[terence_tao_analysis]]（菲尔兹奖·Green-Tao·AI for Math 拐点）
 
 ### 创业者 / 实干派
 [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]]（Glean）· [[pieter_levels_deep_research]]（独立开发）· [[peter_steinberger_deep_research]]（OpenClaw 创始人） · [[boris_cherny_analysis]]（Claude Code 之父） · [[physical_intelligence_analysis]]（Physical Intelligence π·机器人领域 OpenAI·VLA）
@@ -44,6 +44,7 @@
 - **大模型趋势** ← [[大模型收敛时代]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]]
 - **AGI 时间线 / 前沿安全** ← [[anthropic_openai_ai_forecasting_depts_analysis]] · [[ilya_sutskever_analysis]] · [[leopold_aschenbrenner_analysis]] · [[demis_hassabis_analysis]]
 - **AI for Science / 世界模型** ← [[demis_hassabis_analysis]] · [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]
+- **AI for Math / 证明助手** ← [[terence_tao_analysis]]（Lean·ChatGPT co-author·proof abundance·数学家角色分化）
 - **具身智能 / 机器人基础模型** ← [[physical_intelligence_analysis]]（π0/π0.5/π0.7·VLA·flow matching·抵抗过早商业化）· [[sergey_levine_analysis]]（深度RL·离线RL·VLA 思想演进）
 - **宏观 / 货币政策** ← [[ben_bernanke_thoughts_analysis]] · [[serenity_tweets_analysis]]
 - **AI 治理 / 劳动力市场** ← [[ben_bernanke_thoughts_analysis]] · [[anthropic_openai_ai_forecasting_depts_analysis]] · [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]]

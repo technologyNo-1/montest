@@ -1,6 +1,6 @@
 # 01-people · 人物思想深度调研
 
-> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 25 篇。
+> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 26 篇。
 > 交叉网络见 [[INDEX]]。
 
 ## a16z 合伙人系列
@@ -22,6 +22,7 @@
 | [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]] | 李飞飞：空间智能与世界模型 |
 | [[demis_hassabis_analysis]] | Demis Hassabis：solve intelligence·AlphaFold·AGI |
 | [[sergey_levine_analysis]] | Sergey Levine：深度RL机器人·离线RL·π0 VLA·Pi 首席科学家 |
+| [[terence_tao_analysis]] | 陶哲轩：菲尔兹奖·Green-Tao·AI for Math 拐点 |
 
 ## 创业者 / 实干派
 | 文件 | 一句话 |
