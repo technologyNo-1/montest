@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "🔥迈向长程智能体：Long-Horizon Agent综述"
 source: "https://www.xiaohongshu.com/explore/6a5a0270000000001101bf4b?xsec_token=ABsyW_TufMeYuYUN9kE27a_2egTDunbHyLZvnStWmsoX0=&xsec_source=pc_user"
 author:
@@ -8,6 +9,7 @@ created: 2026-07-22
 description: "3 亿人的生活经验，都在小红书"
 tags:
   - "clippings"
+status: active
 ---
 ![](https://sns-webpic-qc.xhscdn.com/202607220424/debca00f0051b9bf425e247af68c09f2/1040g2sg322niq3mtn43g4b9qfdm3mt0jpr19odo!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/f928f795e1716b8470415d8b3cab5fd5/1040g2sg322niq3mtn4004b9qfdm3mt0jvoproio!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/2858e97995359df597b270e6e2ff8578/1040g2sg322niq3mtn40g4b9qfdm3mt0jg05rjpg!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/bf70ba23de91df9c6d3f1d6f96921b1a/1040g2sg322niq3mtn4104b9qfdm3mt0jednjhm0!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/202ef3b38ca86cf2ff316d2d8559b3e3/1040g2sg322niq3mtn41g4b9qfdm3mt0jt68l11g!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/b0ccaf55787ea2030289bd6ec080242c/1040g2sg322niq3mtn4204b9qfdm3mt0j0045u6o!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/bbeaaeff518cdad0fa3852c2154cc644/1040g2sg322niq3mtn42g4b9qfdm3mt0jjfn0ci0!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/196f715a527338fe376189c5e3a2ddd4/1040g2sg322niq3mtn4304b9qfdm3mt0j7uprjro!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/debca00f0051b9bf425e247af68c09f2/1040g2sg322niq3mtn43g4b9qfdm3mt0jpr19odo!nd_dft_wgth_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607220424/f928f795e1716b8470415d8b3cab5fd5/1040g2sg322niq3mtn4004b9qfdm3mt0jvoproio!nd_dft_wlteh_webp_3)
 

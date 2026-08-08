@@ -1,3 +1,12 @@
+---
+title: "IlyaSutskever_SafeSuperintelligence"
+type: people-analysis
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # Ilya Sutskever 与 Safe Superintelligence (SSI) 全景深度分析
 
 > **核心判断**：Ilya Sutskever 是深度学习十年浪潮中"每次都押对方向"的稀有存在——AlexNet 押注"深度+GPU"、Seq2Seq 押注"端到端学习"、GPT 押注"生成式预训练+规模"、SSI 押注"规模时代已终结、研究时代回归"。SSI 在零产品、零营收、约50人的状态下，两年内累计融资超70亿美元、估值320亿美元，并于2026年7月与英伟达达成50亿美元级战略合作，获得 Vera Rubin 平台10倍算力跃升——这场豪赌的本质，是用 Sutskever 十余年积累的技术信誉，对抗整个行业"规模即一切"的共识。然而，他近360天最反共识、也最诚实的表达是：**"当前模型在泛化上远逊于人类，而真正解决问题的机制我们还不知道怎么造。"**

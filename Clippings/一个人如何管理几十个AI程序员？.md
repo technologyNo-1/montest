@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "一个人如何管理几十个AI程序员？"
 source: "https://mp.weixin.qq.com/s/zxjYSGzgEoDyrcpdupEQ-w"
 author:
@@ -8,6 +9,7 @@ created: 2026-07-21
 description: "高手能每天有效烧几十亿Token的秘密。"
 tags:
   - "clippings"
+status: active
 ---
 刘小排 刘小排r *2026年7月21日 00:06*
 

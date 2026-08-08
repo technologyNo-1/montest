@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "amd/skills: Official AMD catalog of AI agent skills. Empower your AI agents with AMD's optimized SW stack."
 source: "https://github.com/amd/skills/blob/main/skills/local-ai-app-integration/SKILL.md"
 author:
@@ -7,6 +8,7 @@ created: 2026-07-28
 description: "Official AMD catalog of AI agent skills. Empower your AI agents with AMD's optimized SW stack. - amd/skills"
 tags:
   - "clippings"
+status: active
 ---
 | name        | local-ai-app-integration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

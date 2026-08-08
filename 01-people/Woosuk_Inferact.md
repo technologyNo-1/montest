@@ -1,3 +1,12 @@
+---
+title: "Woosuk_Inferact"
+type: people-analysis
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 我已收集到足够的信息来撰写一份关于 Woosuk Kwon 和 Inferact 的全面报告。让我来综合所有发现。
 
 ---

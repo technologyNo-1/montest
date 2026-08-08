@@ -1,3 +1,12 @@
+---
+title: "智谱AI深度调研报告"
+type: invest-research
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # 智谱AI（Z.AI）全维度深度调研报告
 
 > 调研时间：2026年7月 | 股票代码：02513.HK | 国际品牌：Z.ai

@@ -1,3 +1,12 @@
+---
+title: "claude_continual_learning_全流程"
+type: workflow
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 Claude Code 的 continual learning（持续学习）指的是 Claude Code 通过 **CLAUDE.md 文件（你写给 Claude 的持久化指令）+ Auto memory（Claude 自己写给自己的学习笔记）+ `.claude/rules/`（按文件路径作用域加载的规则）+ Skills（按需调用的任务流程）+ Subagent（隔离上下文的子代理）** 这套机制，让一个"每次会话从空白上下文开始"的模型能够跨会话、跨任务地积累项目知识、个人偏好和踩坑教训，从而越用越贴合你的代码库与工作习惯。它的设计哲学是：**把"每次都要重新解释一遍的东西"沉淀成可被 Claude 在会话启动时读取的结构化记忆，让模型在生成第一个 token 之前就已经完成"如何操作"的关键决策**【turn0search0】【turn0search2】。
 
 下面分机制对照、解决问题、融入工作流、场景最佳实践、进阶设计五个模块展开。

@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "Claude Code 创作者 Boris：产品能力赶不上AI进化，应给AI松绑，AI开发正从理论转向实证科学"
 source: "https://mp.weixin.qq.com/s/Adh4V6LAWlTow4iQ_V3nFA"
 author:
@@ -8,6 +9,7 @@ created: 2026-07-29
 description: "往往缺乏一款能让模型施展拳脚、充分表达这些能力的产品。反过来看，更常见的情况是产品本身成了绊脚石。"
 tags:
   - "clippings"
+status: active
 ---
 
 

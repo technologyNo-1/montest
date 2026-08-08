@@ -1,3 +1,12 @@
+---
+title: "claude_context_全流程"
+type: workflow
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # Claude Code Context 全景深度分析
 
 ## 一、Context 是什么

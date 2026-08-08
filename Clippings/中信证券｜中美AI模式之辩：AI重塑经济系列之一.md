@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "中信证券｜中美AI模式之辩：AI重塑经济系列之一"
 source: "https://mp.weixin.qq.com/s/u6lywmEQrK5sxH05i3FlsA"
 author:
@@ -8,6 +9,7 @@ created: 2026-07-22
 description: "从宏观视角对中美AI的发展模式进行对比"
 tags:
   - "clippings"
+status: active
 ---
 中信证券研究 中信证券研究 *2026年7月22日 08:02*
 

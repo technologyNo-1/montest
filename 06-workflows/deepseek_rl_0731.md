@@ -1,3 +1,12 @@
+---
+title: "deepseek_rl_0731"
+type: workflow
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 需要先厘清一个概念：您说的"DeepSeek V4 Flash High"中的"High"，指的是 V4-Flash 模型的 **reasoning_effort="high"** 思考模式档位（V4 系列支持 Non-think / Think High / Think Max 三档推理强度），而非一个独立模型【turn0search10】【turn0search25】。当前最新版本是 **2026年7月31日上线的 DeepSeek-V4-Flash-0731 正式版**，它在"模型结构与参数规模一个字没动"的前提下，仅靠后训练就让 Agent 能力出现质变——DeepSWE 从 7.3 分飙升至 54.4 分（暴涨 6 倍+），多项基准反超自家旗舰 V4-Pro-Preview【turn0search11】【turn0search14】。这件事的技术意义远超"刷分"本身，它从第一性原理上重新定义了"模型能力从哪里来"这个根本问题。
 
 ## 一、两层优化的分野：架构层（4月预览版）vs 后训练层（7月正式版）

@@ -1,3 +1,12 @@
+---
+title: "字节跳动大数据plan1"
+type: workflow
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # 企业大数据开发全流程Agent化重构方案
 
 ## 第一部分:整体Plan与任务拆分

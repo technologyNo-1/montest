@@ -1,3 +1,12 @@
+---
+title: "FDE"
+type: ai-token
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # FDE岗位全景拆解 + 3个月上岗实战计划
 
 ## 一、第一性原理：FDE是什么、为什么出现、为什么需求激增

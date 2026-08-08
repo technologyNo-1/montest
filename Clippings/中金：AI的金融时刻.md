@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "中金：AI的金融时刻"
 source: "https://mp.weixin.qq.com/s/8p0RfJKQGRj4y9NIIc1EjA"
 author:
@@ -8,6 +9,7 @@ created: 2026-07-24
 description: "融资规模本身并非问题所在，真正的检验是能否在融资成本上升和资产贬值之前形成现金流的循环。"
 tags:
   - "clippings"
+status: active
 ---
 林英奇 车姝韵等 中金点睛 *2026年7月24日 07:45*
 

@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "Hermes Agent 重构得物数仓工作流"
 source: "https://www.xiaohongshu.com/explore/6a33a3b3000000002200b89a?xsec_token=ABJXXYsOvq4SkvnA9SntsJWSxqYH2rYve3v47l1-FzMOQ=&xsec_source=pc_user"
 author:
@@ -8,6 +9,7 @@ created: 2026-07-19
 description: "3 亿人的生活经验，都在小红书"
 tags:
   - "clippings"
+status: active
 ---
 ![](https://sns-webpic-qc.xhscdn.com/202607190541/5f6440d673894c88e5380aebd8b89e8d/spectrum/1040g0k0321i3euphmu605phpumc1or1fg9rgqbo!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/d0ee56ebb47084a99dc9f65a632db7c4/spectrum/1040g0k0321i3euphmu005phpumc1or1f6qn9t40!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/37f468f15828a6ac8efc8ca07616d788/spectrum/1040g0k0321i3euphmu0g5phpumc1or1fihnpfg0!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/afcc4aef82b002817584818fb56e8437/spectrum/1040g0k0321i3euphmu105phpumc1or1fsuuf338!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/6b534f4695466afbd366ed9f64e3d1d5/spectrum/1040g0k0321i3euphmu1g5phpumc1or1fqa38mo0!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/58df11ebcab002421b09cb7eaab374a6/spectrum/1040g0k0321i3euphmu205phpumc1or1f48dbg9o!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/e885eb2fa51c9cd1873756c51460f626/spectrum/1040g0k0321i3euphmu2g5phpumc1or1finvvvsg!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/eab90bdb826fadcf6846b95535f6f8a3/spectrum/1040g0k0321i3euphmu305phpumc1or1fas9s6j0!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/4768e745e248cd233cb5c5fd320046a9/spectrum/1040g0k0321i3euphmu3g5phpumc1or1f3rratf8!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/a29acc94128227b06e0fbec74446d4fb/spectrum/1040g0k0321i3euphmu405phpumc1or1f5dp3018!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/810bf9131b8ea6d55e7a24759267add3/spectrum/1040g0k0321i3euphmu4g5phpumc1or1fad3rarg!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/9793c237f5d9cd835cc5ce02957700d7/spectrum/1040g0k0321i3euphmu505phpumc1or1f79btu28!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/4e54760e7fb9d7164105942ff2993097/spectrum/1040g0k0321i3euphmu5g5phpumc1or1ftook0i0!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/5f6440d673894c88e5380aebd8b89e8d/spectrum/1040g0k0321i3euphmu605phpumc1or1fg9rgqbo!nd_dft_wlteh_webp_3) ![](https://sns-webpic-qc.xhscdn.com/202607190541/d0ee56ebb47084a99dc9f65a632db7c4/spectrum/1040g0k0321i3euphmu005phpumc1or1f6qn9t40!nd_dft_wlteh_webp_3)
 

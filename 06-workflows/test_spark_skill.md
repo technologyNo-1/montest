@@ -1,6 +1,8 @@
 ---
+type: workflow
 name: spark-etl-tuning
 description: 用于诊断和优化运行在 YARN 上的离线批处理/ETL Spark 作业性能问题,支持自动化诊断(基于实际指标而非经验猜测)、按数据验证调优效果、处理多问题并存及多变业务场景。当用户提到 Spark 任务慢/超时、数据倾斜、OOM、GC 频繁、资源浪费、成本过高、Spark UI/History Server 指标分析、调优前后对比、参数配置等关键词时,必须使用本 skill,并优先调用 scripts/ 下的脚本而非仅凭经验给参数。
+status: active
 ---
 
 # Spark ETL 调优 Skill(YARN 环境,数据驱动闭环版)

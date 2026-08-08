@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "AI出海最大的坑，不是模型。"
 source: "https://mp.weixin.qq.com/s/gPHcTBCev7QFSjU4hfANiQ"
 author:
@@ -8,6 +9,7 @@ created: 2026-07-24
 description:
 tags:
   - "clippings"
+status: active
 ---
 苍何 苍何 *2026年7月23日 12:08*
 

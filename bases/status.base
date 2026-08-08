@@ -1,0 +1,14 @@
+filters:
+  and:
+    - 'file.hasProperty("status")'
+views:
+  - type: table
+    name: "按状态分组"
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - type
+      - date
+      - file.tags

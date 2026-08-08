@@ -1,7 +1,16 @@
+---
+title: "01-people · 人物思想深度调研"
+type: people-analysis
+date: 2026-08-08
+tags: [人物, _index]
+status: active
+source: "重构补全"
+---
+
 # 01-people · 人物思想深度调研
 
-> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 26 篇。
-> 交叉网络见 [[INDEX]]。
+> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 32 篇。
+> 主题入口见 [[MOC-人物思想]],自动看板见 [[bases/vault]],交叉网络见 [[INDEX]]。
 
 ## a16z 合伙人系列
 | 文件 | 一句话 |
@@ -17,22 +26,28 @@
 | 文件 | 一句话 |
 |---|---|
 | [[ilya_sutskever_analysis]] | Ilya：规模结束·价值函数 |
+| [[IlyaSutskever_SafeSuperintelligence]] | Ilya 创立 SSI(Safe Superintelligence)思想演进 |
 | [[leopold_aschenbrenner_analysis]] | Leopold：瓶颈轮动 |
 | [[teknium_nous_research_analysis]] | Teknium/Nous：黏土论·去中心化 |
 | [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]] | 李飞飞：空间智能与世界模型 |
 | [[demis_hassabis_analysis]] | Demis Hassabis：solve intelligence·AlphaFold·AGI |
 | [[sergey_levine_analysis]] | Sergey Levine：深度RL机器人·离线RL·π0 VLA·Pi 首席科学家 |
 | [[terence_tao_analysis]] | 陶哲轩：菲尔兹奖·Green-Tao·AI for Math 拐点 |
+| [[Christopher_Manning]] | Christopher Manning：斯坦福 NLP 思想 |
+| [[Einstein]] | 爱因斯坦思想演进(历史参照系) |
 
 ## 创业者 / 实干派
 | 文件 | 一句话 |
 |---|---|
 | [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]] | Glean 创始人思想演进与 Agents 落地 |
 | [[pieter_levels_deep_research]] | Pieter Levels 独立开发 |
-| [[peter_steinberger_deep_research]] | Peter Steinberger |
+| [[peter_steinberger_deep_research]] | Peter Steinberger(OpenClaw 创始人) |
 | [[boris_cherny_analysis]] | Claude Code 之父 Boris Cherny |
 | [[gavin_uberti_analysis]] | Etched/Sohu:Transformer 专用 ASIC 思想演进 |
 | [[physical_intelligence_analysis]] | Physical Intelligence (π):机器人领域 OpenAI,VLA 思想演进 |
+| [[BanghuaZhu_RadixArk]] | 朱邦华 / RadixArk |
+| [[Moonshot_Academy]] | 月之暗面 / Moonshot AI |
+| [[Woosuk_Inferact]] | Woosuk Kim / Inferact(vLLM 作者) |
 
 ## 产业领袖
 | 文件 | 一句话 |
@@ -56,3 +71,6 @@
 | 文件 | 一句话 |
 |---|---|
 | [[ben_bernanke_thoughts_analysis]] | 本·伯南克：前美联储主席·诺奖·大萧条与 QE·近 360 天 AI 治理 |
+
+## 关联
+- [[MOC-人物思想]] · [[MOC-算力与半导体]] · [[MOC-AI-Agent]] · [[MOC-投资与金融]]

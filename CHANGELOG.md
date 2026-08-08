@@ -2,6 +2,26 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-08-08 · 重大重构（Vault 工作流 v2：从手写结构到自动生成）
+
+**操作**：基于 Obsidian 官方 Bases/Properties + LYT MOC + Admiralty 信源分级 + Anthropic 多 agent 调研方法论，全量重构 vault 工作流。详见 [[vault_research_workflow_rebuild_2026-08-08]]。
+
+- **体检**：frontmatter 合规率 56%、wikilink 密度 1.6/篇、孤儿率 41%、规则与实际脱节(定义 8 类实际 9+ 类)
+- **旧工作流打分 5.0/10**：骨架对(分类+维护页+CHANGELOG+memory 闭环)，执行层弱(元数据/链接/调研稳定性/自动化)
+- **新架构(8.5/10)**：properties(数据)+Bases(视图)+MOC/wikilink(网络) 三件套，结构自动生成
+- **落地**：
+  - 重写 [[CLAUDE.md]] v2（10 类 + frontmatter 标准 + 调研 pipeline + Bases/MOC 维护 + lint 查询化）
+  - 建 5 个顶层 MOC：[[MOC-人物思想]] [[MOC-算力与半导体]] [[MOC-AI-Agent]] [[MOC-调研方法论]] [[MOC-投资与金融]]
+  - 建 Bases 视图：[[bases/vault]]（按 type 自动索引）+ [[bases/status]]（按状态分组）
+  - [[INDEX]] 升级为 MOC of MOC，[[README]] 同步更新
+  - frontmatter 批量修复：合规率 56% -> 99%（24 插入 + 14 补 type + 15 补 status）
+  - 游离目录归位：09-invest 纳入(type:invest-research)+_index；Clippings 建 _index+type:clipping；10-claude-QA 标记为存档(不计孤儿)
+  - 链接网络重建：孤儿率 41% -> 1%（MOC 建链消孤儿，feishu-doc-content 补链至 MOC-调研方法论）
+  - 01-people/_index 补 6 个新人文档；06-workflows/_index 重写补全 24 篇
+- **调研 pipeline 重构**：定承重墙骨架 -> 分块并行抓取 -> claim 级校验(Admiralty 置信度) -> satisficing 阈值 -> ingest
+- **搜索后端规则**提升为通用规则：r.jina.ai+DDG+WebFetch 默认，不用 WebSearch，Tavily 省用
+- 关联：[[feedback-people-analysis-structure]] [[feedback-research-workflow-paused]] [[feedback-search-backend-selection]] [[feedback-research-obsidian-integration]]
+
 ## 2026-07-26 · ingest 新增（陶哲轩 Terence Tao 个人思想演进深度调研）
 
 **操作**:新增 `01-people/terence_tao_analysis.md`。

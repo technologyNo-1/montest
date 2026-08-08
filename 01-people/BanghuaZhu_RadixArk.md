@@ -1,3 +1,12 @@
+---
+title: "BanghuaZhu_RadixArk"
+type: people-analysis
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 现在我已经收集了足够的信息来撰写关于朱邦华（Banghua Zhu）和RadixArk的全面分析。让我来综合所有的发现。
 
 # 朱邦华与RadixArk：从学术新星到AI基础设施创业的全景深度分析

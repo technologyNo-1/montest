@@ -3,6 +3,7 @@ title: 发动机非线性动力学全维度调研
 type: tech-practice
 date: 2026-07-21
 tags: [非线性动力学, 混沌, 分岔, 发动机, 量化金融, econophysics, 可视化]
+status: active
 ---
 
 # 发动机非线性动力学全维度调研

@@ -1,0 +1,67 @@
+filters:
+  and:
+    - 'file.hasProperty("type")'
+views:
+  - type: table
+    name: "人物调研"
+    filters:
+      and:
+        - 'type == "people-analysis"'
+    order:
+      - file.name
+      - date
+      - status
+      - file.tags
+  - type: table
+    name: "行业报告"
+    filters:
+      and:
+        - 'type == "industry-report"'
+    order:
+      - file.name
+      - date
+      - status
+  - type: table
+    name: "算力/Token"
+    filters:
+      and:
+        - 'type == "ai-token"'
+    order:
+      - file.name
+      - date
+      - status
+  - type: table
+    name: "技术实践"
+    filters:
+      and:
+        - 'type == "tech-practice"'
+    order:
+      - file.name
+      - date
+      - status
+  - type: table
+    name: "工作方法论"
+    filters:
+      and:
+        - 'type == "workflow"'
+    order:
+      - file.name
+      - date
+      - status
+  - type: table
+    name: "投资调研"
+    filters:
+      and:
+        - 'type == "invest-research"'
+    order:
+      - file.name
+      - date
+      - status
+  - type: table
+    name: "剪藏原料"
+    filters:
+      and:
+        - 'type == "clipping"'
+    order:
+      - file.name
+      - date

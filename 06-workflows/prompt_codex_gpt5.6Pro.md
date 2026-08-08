@@ -1,3 +1,12 @@
+---
+title: "prompt_codex_gpt5.6Pro"
+type: workflow
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 我已经在 Codex 内置浏览器中登录了 ChatGPT Pro。
 
 这次采用双代理协作：

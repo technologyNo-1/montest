@@ -1,3 +1,12 @@
+---
+title: "nvidia_investments_raw_zh"
+type: invest-research
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # 英伟达（NVIDIA）投资研究 — 原始调研数据（2023–2026）
 
 _数据来源：基于Crunchbase/PitchBook引用文章、Tracxn、CB Insights、Caplight、S&P Global Market Intelligence、Reuters、Bloomberg、CNBC、TechCrunch、企业新闻稿及SEC公告的网络搜索。所有数据点均附有内联来源链接。本文件为原始研究汇编，供下游整合使用——非最终面向客户的报告。_

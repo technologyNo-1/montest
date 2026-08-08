@@ -1,3 +1,12 @@
+---
+title: "Christopher_Manning"
+type: people-analysis
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 
 ## 一、核心总纲（开篇定调）
 

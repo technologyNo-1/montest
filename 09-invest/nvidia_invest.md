@@ -1,3 +1,12 @@
+---
+title: "nvidia_invest"
+type: invest-research
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 基于深度调研，以下是英伟达投资体系的系统性梳理。
 
 ---

@@ -1,4 +1,5 @@
 ---
+type: clipping
 title: "‌﻿​​‬‍⁣​⁢‌⁤‬⁡⁣﻿‬‬⁢⁣⁣‌﻿‬‍⁤‬‌⁣⁤‌​⁣⁡​‬‬⁣‍​⁣‬‍‬​‍﻿‬⁤‬﻿《生产率 J 曲线》中文讲解：企业为什么用了 AI，短期反而可能更慢 - 飞书云文档"
 source: "https://bytedance.us.larkoffice.com/docx/LPrDdk2bOoljxGxFZJWu4VTJsMe"
 author:
@@ -7,6 +8,7 @@ created: 2026-08-08
 description:
 tags:
   - "clippings"
+status: active
 ---
 ByteDanceCloudy
 

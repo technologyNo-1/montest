@@ -1,3 +1,12 @@
+---
+title: "mattpocock-skills-guide"
+type: workflow
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # Matt Pocock Skills 使用指南
 
 > 来源：https://github.com/mattpocock/skills（189k stars，Matt Pocock）

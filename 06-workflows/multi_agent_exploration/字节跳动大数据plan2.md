@@ -1,3 +1,12 @@
+---
+title: "字节跳动大数据plan2"
+type: workflow
+date: 2026-08-08
+tags: []
+status: active
+source: "待补"
+---
+
 # 字节电商大数据全流程Agent化重构方案
 
 基于Plan1的Agent协调架构，结合字节电商真实业务特性，以下为可落地的生产级重构方案。

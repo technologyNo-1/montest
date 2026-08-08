@@ -1,3 +1,13 @@
+---
+title: "大模型应用/算法学习路线+八股+面试实战"
+type: workflow
+date: 2026-08-08
+tags: [大模型, 学习路线, 八股, 面试, 学习资料]
+status: active
+source: "飞书文档粘贴(22k 行原料)"
+aliases: [feishu-doc-content, 大模型学习路线, 大模型八股]
+---
+
 <title>大模型应用/算法学习路线+八股+面试实战5</title>
 
 # 阅读指南和学习建议
