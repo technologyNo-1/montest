@@ -23,7 +23,8 @@
 1. 构造器
 ### 5.异常
 ### 6.面向对象
-**定义**:类 = 数据(属性)+ 行为(方法)的封装单元,是"模板";实例 = 按模板创建的具体对象。核心价值:相关数据和操作绑定、边界清晰、职责单一,是模块化架构的原子。四大理念:**封装、继承、多态、抽象**。
+**定义**:类 = 数据(属性)+ 行为(方法)的封装单元,是"模板";实例 = 按模板创建的具体对象。核心价值:相关数据和操作绑定、边界清晰、职责单一,是模块化架构的原子。
+四大理念:**封装、继承、多态、抽象**。
 
 #### 6.1 类
 1. 最小可用类
@@ -228,3 +229,144 @@ print(svc.checkout(order))        # alipay paid 300
 ### 7.标准库
 ###  8.网络编程
 ### 9.文件处理
+
+### 10.进程和线程
+**定义**:进程 = 资源分配单位(独立内存空间,互不共享);线程 = CPU 调度单位(同一进程内共享内存)。Python 关键约束:**GIL**(全局解释器锁)使同一时刻仅一个线程执行 Python 字节码 --> 核心推论:**CPU 密集用多进程,IO 密集用多线程/异步**。并发(交替处理任务)≠ 并行(多核同时执行)。
+
+#### 10.1 选型(最重要的决策,先做这一步)
+| 任务类型 | 特征 | 方案 |
+|---|---|---|
+| IO 密集 | 网络请求/读写文件/DB,大部分时间在**等** | ThreadPoolExecutor / asyncio |
+| CPU 密集 | 计算/加密/解析,大部分时间在**算** | ProcessPoolExecutor(绕开 GIL) |
+
+1. 判断方法:去掉网络和磁盘,纯计算快不快?快 = IO 密集;慢 = CPU 密集
+
+#### 10.2 线程(threading)-- IO 密集
+1. 基本用法
+```python
+import threading
+
+def worker(n):
+    print(f"thread {n} running")
+
+t = threading.Thread(target=worker, args=(1,))
+t.start()          # 启动,不阻塞
+t.join()           # 等它结束
+```
+2. 线程安全:共享可变状态必须加锁
+```python
+import threading
+
+counter = 0
+lock = threading.Lock()
+
+def inc():
+    global counter
+    with lock:                 # 不加锁,count += 1 会丢更新(非原子)
+        counter += 1
+```
+3. 线程间通信:queue.Queue(自带锁,生产首选,别裸传共享变量)
+```python
+from queue import Queue
+
+q = Queue(maxsize=100)
+q.put(item)          # 生产者;队列满自动阻塞(天然限流)
+item = q.get()       # 消费者;队列空自动等待
+q.task_done()        # 处理完标记
+```
+4. 生产首选:线程池(池化复用 + 限并发,别裸建线程)
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+urls = [f"https://api.x.com/{i}" for i in range(20)]
+
+def fetch(url):
+    ...                       # requests.get(url) 之类 IO
+
+with ThreadPoolExecutor(max_workers=8) as pool:
+    futures = {pool.submit(fetch, u): u for u in urls}
+    for f in as_completed(futures):
+        try:
+            data = f.result()          # 子任务异常在这里抛
+        except Exception as e:
+            print(f"{futures[f]} failed: {e}")
+```
+
+#### 10.3 进程(multiprocessing)-- CPU 密集
+1. 生产首选:进程池(concurrent.futures 统一接口,和线程池同款 API)
+```python
+from concurrent.futures import ProcessPoolExecutor
+import os
+
+def heavy(n: int) -> int:              # 纯计算,CPU 密集
+    return sum(i * i for i in range(n))
+
+if __name__ == "__main__":             # 必须!见下条
+    nums = [10_000_000] * os.cpu_count()
+    with ProcessPoolExecutor() as pool:        # 默认 worker = cpu_count
+        total = sum(pool.map(heavy, nums))     # 每个任务独立进程,绕开 GIL
+    print(total)
+```
+2. `if __name__ == "__main__"` 必写:macOS/Windows 默认 spawn 启动(重新 import 主模块),没有守护会无限递归拉起进程直接崩
+3. 进程间不共享内存:参数/返回值靠 pickle 序列化传递 --> **别传大对象**(序列化开销可能比计算还贵),传文件路径/ID
+
+#### 10.4 asyncio(高并发 IO 的现代方案,入门一句话)
+1. 单线程事件循环:`await` = 主动让出控制权,等 IO 时切换到别的任务;万级并发 IO 才需要它,常规几十并发用线程池即可
+```python
+import asyncio
+
+async def fetch(url: str) -> str:
+    await asyncio.sleep(0.5)           # 模拟 IO;await = 让出控制权
+    return f"done {url}"
+
+async def main():
+    urls = [f"u{i}" for i in range(10)]
+    results = await asyncio.gather(*[fetch(u) for u in urls])   # 并发执行
+    print(results)
+
+asyncio.run(main())
+```
+2. 容错版:`asyncio.gather(*tasks, return_exceptions=True)` 收集异常而非整体失败
+
+#### 10.5 生产最佳实践
+1. **先选型再动手**:IO -> 线程池/asyncio;CPU -> 进程池(见 10.1)
+2. 用 `concurrent.futures` 的池,别裸 Thread/Process:池管理生命周期 + 限流 + 复用
+3. 池大小:CPU 密集 = `os.cpu_count()`;IO 密集经验值 8~64(过大反而拖垮对端/本机)
+4. 线程共享可变状态必须 Lock;更好的设计是**无共享**--用 Queue 传消息
+5. multiprocessing 入口必须 `if __name__ == "__main__"`(macOS/Windows)
+6. `f.result()` 才会抛子任务异常 -- 只 submit 不取结果 = 异常被吞、失败无感知
+7. 池用 `with`(结束自动 shutdown);长生命周期服务记得优雅关闭
+8. `daemon=True` 线程随主进程退出,只用于可随时中断的辅助任务
+9. 一切等待设超时:`f.result(timeout=30)` / `asyncio.wait_for(coro, 30)`,防卡死
+10. 子进程参数要可 pickle;大对象传路径不传数据
+
+#### 10.6 业务结合设计
+1. 业务模式:批量调 API/拉数据(IO -> 线程池)、批量计算/解析/加密(CPU -> 进程池);池在 Service 层做批量编排,结果交 Repository 落库,失败接异常体系(重试/日志,见 6.4 与 5.异常)
+2. 实战:批量调 API(线程池 + 限并发 + 单点失败不影响整体)
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import random, time
+
+def call_api(uid: int) -> dict:
+    time.sleep(random.uniform(0.2, 0.5))          # 模拟网络 IO
+    if random.random() < 0.1:
+        raise ConnectionError(f"uid {uid} failed")
+    return {"uid": uid, "ok": True}
+
+def batch_call(users: list, max_workers: int = 8):
+    """批量调 API:池限并发,单个失败跳过并收集,部分成功"""
+    results, errors = [], []
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(call_api, u): u for u in users}
+        for f in as_completed(futures):
+            try:
+                results.append(f.result())
+            except Exception as e:
+                errors.append({"uid": futures[f], "error": str(e)})
+    return results, errors
+```
+3. 实战:CPU 密集并行(进程池)= 10.3 的 heavy 例子,N 核约 N 倍加速
+4. 架构收益量化:100 个请求串行 ~35s -> 8 并发 ~5s;8 核计算并行 ~8x
+5. **一句话原则**:先问 IO 还是 CPU -> 上池(Executor) -> 取结果拿异常(result) -> 设并发上限(max_workers) -- 并发四件套:选型、池化、容错、限流。
+### 10.进程和线程
+
