@@ -27,6 +27,7 @@ aliases: [人物思想MOC, MOC人物]
 - [[teknium_nous_research_analysis]] - Teknium/Nous:黏土论·去中心化
 - [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]] - 李飞飞:空间智能与世界模型
 - [[demis_hassabis_analysis]] - Demis Hassabis:solve intelligence·AlphaFold·AGI
+- [[jeff_dean_analysis]] - Jeff Dean:MapReduce/TPU/Gemini·系统规模化第一性·Discovery Loop 自动化实验循环
 - [[sergey_levine_analysis]] - Sergey Levine:深度RL机器人·π0 VLA·Pi 首席科学家
 - [[terence_tao_analysis]] - 陶哲轩:菲尔兹奖·Green-Tao·AI for Math 拐点
 - [[Christopher_Manning]] - Christopher Manning:斯坦福 NLP 思想

@@ -30,6 +30,7 @@ aliases: [算力MOC, 半导体MOC, MOC算力]
 - [[jensen_huang_thoughts_analysis]] - 黄仁勋五层蛋糕
 - [[gavin_uberti_analysis]] - Etched/Sohu Transformer 专用 ASIC
 - [[dylan_patel_semianalysis_deep_research]] - SemiAnalysis Dylan Patel
+- [[jeff_dean_analysis]] - Jeff Dean:TPU 八代·训练/推理芯片分型·picojoule 能量度量
 
 ## 关联 MOC
 - [[MOC-投资与金融]] - HBM/CXMT 投资调研交集

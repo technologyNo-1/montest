@@ -15,6 +15,7 @@ aliases: [AgentMOC, MOC-Agent]
 - [[AI_Agent创业策略报告_2026]] - AI Agent 创业策略
 - [[Cresta_2026系统性总结]] - Cresta 客户对话 AI Agent
 - [[Arvind_Jain_Glean_思想演进与Glean_Agents落地调研]] - Glean 创始人思想演进与 Agents 落地
+- [[jeff_dean_analysis]] - Jeff Dean:虚拟工程师/agents 路径·Discovery Loop 自动化实验循环(Agent 思想关键人物)
 
 ## Agent 框架与 harness 工程
 - [[openclaw_deep_research_2026-07-21]] - OpenClaw 全维度技术调研(自托管 agent 框架)

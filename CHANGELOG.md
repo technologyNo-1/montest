@@ -2,6 +2,16 @@
 
 > LLM Wiki 操作记录，按时间倒序。每次 ingest/lint 追加一条。
 
+## 2026-08-16 · ingest：Jeff Dean 个人背景·思想演进·近360天调研
+
+**操作**：新增 `01-people/jeff_dean_analysis.md`（约 33 篇）。tavily 找 URL + r.jina.ai 抓取（Wikipedia 全条目、Sequoia Training Data 逐字稿、YC《1% Rule》逐字稿、discoveryloop.com 官网、Radical Reads 公告、Dwarkesh 页）。
+
+- **主线**：系统规模化第一性 → 自动化实验循环。五阶段：MapReduce 分布式系统 → 深度学习/TPU → Google AI/Pathways → Gemini/乘法思维 → **2026-08-05 离开 Google 创立 Discovery Loop**（与 Ghemawat/Le/Vinyals，Radical+Khosla 领投，Alphabet 参与）
+- **近360天收束**：模型不再是主角，可度量实验循环 + 更好数据与测量才是前沿（NeurIPS 2025/I/O 2026/YC 访谈/离职）
+- **方法论专节**：8 步流程（napkin math→第一性原理→分解抽象→端到端→快速原型→物化方法论→evals→规模化乐观）
+- **MOC 建链**：MOC-人物思想（研究者组）+ MOC-AI-Agent + MOC-算力与半导体 + _index 补 1 篇
+- 文档出链 10 处（3 MOC + 7 交叉人物）
+
 ## 2026-08-08 · 重大重构（Vault 工作流 v2：从手写结构到自动生成）
 
 **操作**：基于 Obsidian 官方 Bases/Properties + LYT MOC + Admiralty 信源分级 + Anthropic 多 agent 调研方法论，全量重构 vault 工作流。详见 [[vault_research_workflow_rebuild_2026-08-08]]。

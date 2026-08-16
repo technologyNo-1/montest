@@ -9,7 +9,7 @@ source: "重构补全"
 
 # 01-people · 人物思想深度调研
 
-> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 32 篇。
+> AI 领域人物的思想体系、观点演进、叙事手法深度调研。共 33 篇。
 > 主题入口见 [[MOC-人物思想]],自动看板见 [[bases/vault]],交叉网络见 [[INDEX]]。
 
 ## a16z 合伙人系列
@@ -31,6 +31,7 @@ source: "重构补全"
 | [[teknium_nous_research_analysis]] | Teknium/Nous：黏土论·去中心化 |
 | [[李飞飞_空间智能与世界模型_2026思科AI峰会观点总结]] | 李飞飞：空间智能与世界模型 |
 | [[demis_hassabis_analysis]] | Demis Hassabis：solve intelligence·AlphaFold·AGI |
+| [[jeff_dean_analysis]] | Jeff Dean：MapReduce/TPU/Gemini·系统规模化·Discovery Loop 自动化实验循环 |
 | [[sergey_levine_analysis]] | Sergey Levine：深度RL机器人·离线RL·π0 VLA·Pi 首席科学家 |
 | [[terence_tao_analysis]] | 陶哲轩：菲尔兹奖·Green-Tao·AI for Math 拐点 |
 | [[Christopher_Manning]] | Christopher Manning：斯坦福 NLP 思想 |
