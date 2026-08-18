@@ -12,6 +12,7 @@ aliases: [agent-training, agent-forensics]
 
 > 目标:7 天 + 每道题都是**能跑通的完整代码**(在 `04-tech/agent-training/dayN/` 里)。做完后,你对 agent 开发不再是查 API,而是有自己的思想模型,工程落地超平均水平。
 > 用法:本文件是**导航 + 心智模型**;每天的**实物**在对应 `dayN/` 文件夹,`README.md` 领题,`.py` 即练即跑。
+> 进度:✅ **7 天实物已全部落地(2026-08-19)**,`04-tech/agent-training/day01–07/` 每脚本均跑通,毕业命令 `uv run --with langgraph python3 day07_capstone/run_checklist.py` 全 PASS。
 
 ---
 
