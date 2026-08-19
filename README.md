@@ -29,11 +29,14 @@
 ### 作为 Claude Code Skill 使用（推荐）
 
 ```bash
-# 在 Claude Code 中运行
+# 最简单：只给习题文件，Claude 自动生成答案
+/montest path/to/你的习题.md
+
+# 有现成答案：同时传入答案文件（答案质量更高）
 /montest path/to/你的习题.md path/to/答案.md
 ```
 
-Claude 会自动解析 → 生成答案 → 构建 HTML → 给你部署链接。
+Claude 会自动解析 → 生成答案（含 code-review 校验）→ 构建 HTML → 给你部署链接。
 
 ### 手动使用
 
