@@ -1,0 +1,19 @@
+<div class="container">
+  <div class="hdr">
+    <button class="theme-btn" onclick="toggleTheme()" title="切换主题">&#127769;</button>
+    <h1>{{TITLE}}</h1>
+    <p>交互式练习平台 — 先做题，再对答案</p>
+  </div>
+  <div class="pbar">
+    <div class="track"><div class="fill" id="pFill" style="width:0%"></div></div>
+    <div class="ptxt" id="pTxt">0 / {{TOTAL_COUNT}} 已完成</div>
+    <button class="btn-rst" onclick="resetAll()">重置全部</button>
+  </div>
+  <div class="tabs">
+    <div class="tab on" onclick="switchTab('choice')">选择题（{{CHOICE_COUNT}}）</div>
+    <div class="tab" onclick="switchTab('short')">简答题（{{SHORT_COUNT}}）</div>
+    <div class="tab" onclick="switchTab('code')">编程题（{{CODE_COUNT}}）</div>
+  </div>
+  <div id="app"></div>
+  <div class="ftr">MontExam — 交互式练习平台</div>
+</div>
