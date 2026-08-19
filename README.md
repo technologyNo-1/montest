@@ -17,6 +17,7 @@
 - 选择题：点击选项即时判分，附详细解析
 - 简答题：参考答案折叠展示，含代码高亮
 - 编程题：内置 Python 编辑器（CodeMirror）+ 浏览器端 Python 运行时（Skulpt），支持自动补全和实时测试
+- **本地 Python 模式**（`--mode local`）：浏览器编辑器通过 WebSocket 连接本地真实 Python 解释器，支持标准库和第三方包；每次执行自动保存 `.py` 文件，可直接在 PyCharm 中打开调试
 - 明暗主题自动切换
 - 进度条 + localStorage 持久化
 - 通过测试时随机庆祝动画
@@ -40,11 +41,18 @@ Claude 会自动解析 → 生成答案 → 构建 HTML → 给你部署链接�
 # 1. 解析习题 Markdown 为 JSON
 node scripts/parse-exam.js 习题.md 答案.md exam-data.json
 
-# 2. 构建单 HTML 文件
+# 2. 构建单 HTML 文件（浏览器模式，Skulpt）
 node scripts/build.js exam-data.json --output 练习平台.html --title "我的练习"
 
-# 3. 浏览器直接打开
+# 或：构建本地模式（连接真实 Python，支持标准库）
+node scripts/build.js exam-data.json --output 练习平台.html --mode local
+
+# 3. 浏览器直接打开（浏览器模式）
 open 练习平台.html
+
+# 或：启动本地服务器（本地模式）
+python scripts/montest-serve.py --html 练习平台.html
+# 浏览器访问 http://localhost:8234
 ```
 
 ## 项目结构
@@ -52,13 +60,15 @@ open 练习平台.html
 ```
 montest/
 ├── scripts/
-│   ├── parse-exam.js    # Markdown 解析器（习题 → JSON）
-│   ├── build.js         # 构建脚本（JSON + 模板 → HTML）
-│   └── deploy.js        # 部署脚本（Netlify / 本地预览）
+│   ├── parse-exam.js      # Markdown 解析器（习题 → JSON）
+│   ├── build.js           # 构建脚本（JSON + 模板 → HTML）
+│   ├── deploy.js          # 部署脚本（Netlify / 本地预览）
+│   └── montest-serve.py   # 本地 Python 桥接服务器（零依赖）
 ├── templates/
-│   ├── styles.css       # UI 设计系统（Capsule + Soft Editorial）
-│   └── body.html        # HTML 骨架模板
-├── vendor/              # 第三方库（已内联到最终 HTML）
+│   ├── styles.css         # UI 设计系统（Capsule + Soft Editorial）
+│   ├── body.html          # HTML 骨架模板
+│   └── ws-client.js       # 本地模式 WebSocket 客户端
+├── vendor/                # 第三方库（已内联到最终 HTML）
 │   ├── codemirror.min.js
 │   ├── skulpt.min.js
 │   ├── skulpt-stdlib.js

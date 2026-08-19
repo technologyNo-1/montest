@@ -14,15 +14,17 @@ const args = process.argv.slice(2);
 const dataPath = args.find(a => !a.startsWith('--'));
 const outputIdx = args.indexOf('--output');
 const titleIdx = args.indexOf('--title');
+const modeIdx = args.indexOf('--mode');
 
 if (!dataPath) {
-  console.error('Usage: node build.js <exam-data.json> [--output path.html] [--title "Title"]');
+  console.error('Usage: node build.js <exam-data.json> [--output path.html] [--title "Title"] [--mode browser|local]');
   process.exit(1);
 }
 
 const examData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
 const meta = examData.meta || {};
 const title = (titleIdx >= 0 ? args[titleIdx + 1] : null) || meta.title || '练习平台';
+const mode = (modeIdx >= 0 ? args[modeIdx + 1] : 'browser') || 'browser';
 
 // Paths
 const SKILL_DIR = path.resolve(__dirname, '..');
@@ -50,8 +52,19 @@ const cmCSSText = cmCSS.map(f => {
 }).join('\n');
 
 const confettiJS = fs.readFileSync(path.join(VENDOR_DIR, 'canvas-confetti.browser.js'), 'utf8');
-const skulptJS = fs.readFileSync(path.join(VENDOR_DIR, 'skulpt.min.js'), 'utf8');
-const skulptStdlibJS = fs.readFileSync(path.join(VENDOR_DIR, 'skulpt-stdlib.js'), 'utf8');
+
+// Conditional: Skulpt (browser mode) vs ws-client (local mode)
+let runtimeJS = '';
+if (mode === 'browser') {
+  const skulptJS = fs.readFileSync(path.join(VENDOR_DIR, 'skulpt.min.js'), 'utf8');
+  const skulptStdlibJS = fs.readFileSync(path.join(VENDOR_DIR, 'skulpt-stdlib.js'), 'utf8');
+  runtimeJS = `<script>${skulptJS}</script>\n<script>${skulptStdlibJS}</script>`;
+  console.log(`[OK] Mode: browser (Skulpt included, ~1.3MB)`);
+} else {
+  const wsClientJS = fs.readFileSync(path.join(TPL_DIR, 'ws-client.js'), 'utf8');
+  runtimeJS = `<script>${wsClientJS}</script>`;
+  console.log(`[OK] Mode: local (WebSocket client, ~400KB)`);
+}
 
 // Generate body HTML with dynamic counts
 const body = bodyRaw
@@ -71,7 +84,6 @@ function validateJS(label, code) {
 }
 
 if (!validateJS('app', appJS)) process.exit(1);
-if (!validateJS('skulpt', skulptJS)) process.exit(1);
 console.log('[OK] All JS validated');
 
 // Assemble HTML
@@ -88,8 +100,7 @@ const html = `<!DOCTYPE html>
 ${body}
 <script>${cmJS}</script>
 <script>${confettiJS}</script>
-<script>${skulptJS}</script>
-<script>${skulptStdlibJS}</script>
+${runtimeJS}
 <script>${appJS}</script>
 </body>
 </html>`;
