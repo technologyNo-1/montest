@@ -82,7 +82,20 @@ class CodeRunner:
 
     def _build_test_script(self, code, test_cases):
         """将用户代码和测试用例拼接成可执行脚本"""
-        lines = [code, "", "# ===== MontExam 自动测试 ====="]
+        lines = [
+            "# ===== MontExam 输入模拟 =====",
+            "import builtins as _builtins",
+            "_input_vals = iter(['3', '25', '7', 'test', 'q', '100', 'hello'])",
+            "def _mock_input(prompt=''):",
+            "    try: return next(_input_vals)",
+            "    except StopIteration: return ''",
+            "_builtins.input = _mock_input",
+            "",
+            "# ===== 用户代码 =====",
+            code,
+            "",
+            "# ===== MontExam 自动测试 =====",
+        ]
 
         for i, tc in enumerate(test_cases, 1):
             call = tc.get("c", "")
@@ -236,6 +249,8 @@ class MontExamHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/run":
             self._handle_run()
+        elif parsed.path == "/api/open-in-pycharm":
+            self._handle_open_pycharm()
         else:
             self.send_error(404)
 
@@ -278,6 +293,47 @@ class MontExamHandler(SimpleHTTPRequestHandler):
 
         result = self.runner.run(code, test_cases, question_id)
         self._json_response(result)
+
+    def _handle_open_pycharm(self):
+        """用 PyCharm 打开指定文件"""
+        import subprocess
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._json_response({"error": "Invalid JSON"}, status=400)
+            return
+
+        file_path = data.get("file", "")
+        if not file_path:
+            self._json_response({"error": "未指定文件路径"}, status=400)
+            return
+
+        # 尝试用 PyCharm 命令行工具打开
+        # macOS 默认路径: /Applications/PyCharm.app/Contents/MacOS/pycharm
+        pycharm_paths = [
+            "/Applications/PyCharm.app/Contents/MacOS/pycharm",
+            "/Applications/PyCharm CE.app/Contents/MacOS/pycharm-ce",
+        ]
+        for p in pycharm_paths:
+            if os.path.exists(p):
+                try:
+                    subprocess.Popen([p, file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self._json_response({"ok": True, "file": file_path})
+                    return
+                except Exception as e:
+                    self._json_response({"ok": False, "error": str(e)})
+                    return
+
+        # 回退：尝试 open 命令（macOS 会用默认 IDE 打开）
+        try:
+            subprocess.Popen(["open", file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._json_response({"ok": True, "file": file_path, "note": "用系统默认程序打开"})
+            return
+        except Exception as e:
+            self._json_response({"ok": False, "error": f"未找到 PyCharm，请手动打开: {file_path}"})
 
     def _json_response(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
